@@ -1,0 +1,11 @@
+{
+  "modelVersion": "6.0.0",
+  "name": "china_textbook_study_harmony",
+  "version": "0.1.0",
+  "description": "课本学习 HarmonyOS 原生客户端（ArkTS / ArkUI），复刻 apps/mobile 的 iOS 原生实现。",
+  "main": "",
+  "author": "",
+  "license": "MIT",
+  "dependencies": {},
+  "devDependencies": {}
+}

@@ -1,0 +1,10 @@
+{
+  "string": [
+    { "name": "module_desc", "value": "课本学习：把课本变成闯关游戏" },
+    { "name": "EntryAbility_desc", "value": "课本学习" },
+    { "name": "EntryAbility_label", "value": "课本学习" },
+    { "name": "form_streak_display", "value": "连胜火苗" },
+    { "name": "form_streak_desc", "value": "显示你的连胜火苗和今日进度" },
+    { "name": "permission_mic_reason", "value": "跟读课文需要使用麦克风，录下你的朗读。录音只保存在这台设备上，退出跟读后会自动删除，不会上传。" }
+  ]
+}
