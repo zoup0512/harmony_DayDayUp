@@ -37,3 +37,9 @@ yarn.lock
 Thumbs.db
 *.swp
 *.swo
+
+# Real-device test artifacts (screenshots / UI-tree dumps)
+/s*.jpeg
+/*.jpeg
+/lay*.json
+/layout*.json

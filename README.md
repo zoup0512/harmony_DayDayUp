@@ -1,4 +1,6 @@
-# apps/harmony — 聪聪学堂 HarmonyOS 原生端
+# harmony_DayDayUp — 聪聪学堂 HarmonyOS 原生端
+
+> 独立仓库。文中 `apps/mobile`、`apps/web`、`packages/core` 等路径指 congcong-school 主仓库（本仓库在其中位于 `apps/harmony/harmony_DayDayUp`，被主仓库 `.gitignore` 忽略）。
 
 `apps/mobile`（iOS SwiftUI 原生版）的逐层移植：同一个 Duolingo 式课本学习应用，
 用 **ArkTS / ArkUI** 原生实现，不是 WebView 壳。领域规则与 `packages/core`、

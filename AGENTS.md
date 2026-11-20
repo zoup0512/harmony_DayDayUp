@@ -1,4 +1,4 @@
-# apps/harmony — agent notes
+# harmony_DayDayUp (apps/harmony/harmony_DayDayUp) — agent notes
 
 ## Build / verify
 - `scripts/build.sh` — assembleHap via bundled hvigor (DevEco at
@@ -42,3 +42,13 @@
   'listen' | 'followup' | 'story'.
 - Lesson session resume: `ActiveLessonSession` + `lessonContentKey()` (sha256 of
   lesson minus audio) — stale sessions are dropped, not resumed.
+
+## Repo hygiene
+- Standalone repo; parent congcong-school ignores `apps/harmony/`.
+- `build-profile.json5` is committed WITHOUT signing (`signingConfigs: []`).
+  Local copy holds the DevEco auto-sign config and is `git update-index
+  --skip-worktree`d — never commit it back. To edit the tracked version:
+  `--no-skip-worktree`, edit, strip signing, commit, re-skip.
+- Real-device screenshots / UI dumps (`/*.jpeg`, `/lay*.json`) are gitignored.
+- `harmony_push.bat` never stores the token in `.git/config` (one-shot
+  `http.extraheader`); remote URL must stay credential-free.

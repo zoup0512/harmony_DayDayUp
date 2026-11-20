@@ -1,25 +1,10 @@
 {
   "app": {
     // 签名：在 DevEco Studio 中 File › Project Structure › Signing Configs 勾选「Automatically generate signature」即可生成调试签名。
-    "signingConfigs": [
-      {
-        "name": "default",
-        "type": "HarmonyOS",
-        "material": {
-          "certpath": "C:\\Users\\24790\\.ohos\\config\\default_harmony_jWyxnhJWg0ZxnDWrQRpcnJ5xmjS6rpe8VMQsUDt_TTI=.cer",
-          "keyAlias": "debugKey",
-          "keyPassword": "0000001B90287AAC8BF644915B9B59A121A4BD58A9D7C14E7CE8C1100DFCC4617CF19D8C913F070846C646",
-          "profile": "C:\\Users\\24790\\.ohos\\config\\default_harmony_jWyxnhJWg0ZxnDWrQRpcnJ5xmjS6rpe8VMQsUDt_TTI=.p7b",
-          "signAlg": "SHA256withECDSA",
-          "storeFile": "C:\\Users\\24790\\.ohos\\config\\default_harmony_jWyxnhJWg0ZxnDWrQRpcnJ5xmjS6rpe8VMQsUDt_TTI=.p12",
-          "storePassword": "0000001B0F090FDBDFE7FEF49C6364CFD32A806357A6165862A98FA3FEAED0C7BA7D4DAE350838AB97733F"
-        }
-      }
-    ],
+    "signingConfigs": [],
     "products": [
       {
         "name": "default",
-        "signingConfig": "default",
         "compatibleSdkVersion": "6.0.0(20)",
         "targetSdkVersion": "6.0.0(20)",
         "runtimeOS": "HarmonyOS",
