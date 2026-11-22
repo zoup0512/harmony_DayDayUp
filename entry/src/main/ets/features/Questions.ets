@@ -118,6 +118,8 @@ export struct QuestionRenderer {
   }
 }
 
+const TRUE_FALSE_CARD_HEIGHT: number = 110;
+
 @ComponentV2
 struct OptionCard {
   @Param label: string = '';
@@ -143,7 +145,8 @@ struct OptionCard {
 
   build() {
     Stack({ alignContent: Alignment.Top }) {
-      Row().width('100%').height('100%').borderRadius(R.card).backgroundColor(cardLedge(this.state)).margin({ top: 4 })
+      Row().width('100%').height(this.tall ? TRUE_FALSE_CARD_HEIGHT : '100%')
+        .borderRadius(R.card).backgroundColor(cardLedge(this.state)).margin({ top: 4 })
       Column() {
         if (this.tall) {
           Column({ space: 8 }) {
@@ -151,7 +154,7 @@ struct OptionCard {
             Text(this.label).fontSize(F.subhead).fontWeight(W.bold).fontColor(cardInk(this.state))
           }
           .width('100%')
-          .height(110)
+          .layoutWeight(1)
           .justifyContent(FlexAlign.Center)
         } else {
           Row({ space: 12 }) {
@@ -168,6 +171,7 @@ struct OptionCard {
         }
       }
       .width('100%')
+      .height(this.tall ? TRUE_FALSE_CARD_HEIGHT : undefined)
       .backgroundColor(cardFill(this.state))
       .borderRadius(R.card)
       .border({ width: this.state === 'default' || this.state === 'disabled' ? 2 : 2.5, color: cardBorder(this.state), radius: R.card })
