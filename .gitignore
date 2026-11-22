@@ -43,3 +43,6 @@ Thumbs.db
 /*.jpeg
 /lay*.json
 /layout*.json
+
+# hilog captures from device test rounds
+/hilog*.txt

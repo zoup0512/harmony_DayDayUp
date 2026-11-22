@@ -31,12 +31,35 @@ export class AudioPlayer {
   @Trace isSlowMode: boolean = false;
   @Trace currentRunId: number = 0;
 
+  // @Trace 跨组件字段实测不派发——组件侧用 onChange + @Local 镜像驱动重绘（同 ProgressStore / Router）。
+  private listeners: Array<() => void> = [];
   private queue: QueueItem[] = [];
   private player: media.AVPlayer | null = null;
   private file: fs.File | null = null;
   private token: number = 0;
   private playedCount: number = 0;
   private runSlow: boolean = false;
+
+  /** 播放状态（isPlaying / nowPlayingIndex / queueCompletionCount / isSlowMode / currentRunId）变化时回调。
+   *  返回取消订阅函数——组件须在 aboutToDisappear 调用。 */
+  onChange(cb: () => void): () => void {
+    this.listeners.push(cb);
+    return () => {
+      this.listeners = this.listeners.filter((x: () => void) => x !== cb);
+    };
+  }
+
+  private emit(): void {
+    this.listeners.slice().forEach((cb: () => void) => cb());
+  }
+
+  setSlowMode(on: boolean): void {
+    if (this.isSlowMode === on) {
+      return;
+    }
+    this.isSlowMode = on;
+    this.emit();
+  }
 
   play(paths: (string | null | undefined)[], slow?: boolean): void {
     if (SettingsStore.shared.isMuted) {
@@ -86,6 +109,7 @@ export class AudioPlayer {
     this.playedCount = 0;
     this.isPlaying = false;
     this.nowPlayingIndex = -1;
+    this.emit();
   }
 
   /** "/audio/8e/8ec5...opus" → 本地 cstf/audio/8e/8ec5....{m4a|mp3}（不存在返回 null）。
@@ -168,6 +192,7 @@ export class AudioPlayer {
       if (natural) {
         this.queueCompletionCount++;
       }
+      this.emit();
       return;
     }
     const next = this.queue.shift() as QueueItem;
@@ -175,6 +200,7 @@ export class AudioPlayer {
     this.nowPlayingIndex = next.index;
     this.playedCount++;
     const gen = ++this.token;
+    this.emit();
     media.createAVPlayer().then((p: media.AVPlayer) => {
       if (gen !== this.token) {
         p.release();

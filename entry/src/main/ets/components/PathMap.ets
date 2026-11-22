@@ -92,6 +92,10 @@ const NODE: number = 72;
 const STEP_Y: number = 96;
 const BANNER_H: number = 72;
 const STAGE_W: number = 340;
+/** 开始弹窗实测前的高度估计（标题 + 副标题 + 按钮 + 内边距 + 尖角）。 */
+const POPUP_EST_H: number = 200;
+/** 弹窗底边与视口底边至少留出的距离。 */
+const POPUP_MARGIN: number = 16;
 
 class Banner {
   unitNumber: number;
@@ -129,6 +133,7 @@ export struct PathMap {
   @Local pressedId: string = '';
   @Local celebrateId: string = '';
   @Local burst: number = 0;
+  @Local popupH: number = 0;
   private scroller: Scroller = new Scroller();
   private lastCurrentId: string = '';
 
@@ -199,6 +204,43 @@ export struct PathMap {
     return this.lessons.length === 0 ? NODE : this.posY(this.lessons.length - 1) + NODE / 2 + 160;
   }
 
+  private popupTop(index: number): number {
+    return this.posY(index) + NODE / 2 + 30;
+  }
+
+  private popupBottom(index: number): number {
+    return this.popupTop(index) + (this.popupH > 0 ? this.popupH : POPUP_EST_H) + POPUP_MARGIN;
+  }
+
+  /** 弹窗打开时画布至少长到弹窗底边，否则末尾几课的弹窗滚不出来。 */
+  private stageHeight(): number {
+    const base = this.totalHeight();
+    if (this.selected < 0 || this.selected >= this.lessons.length) {
+      return base;
+    }
+    return Math.max(base, this.popupBottom(this.selected));
+  }
+
+  /** 弹窗画在节点下方；底边超出 Scroll 视口时把路径往上滚，保证「开始」按钮整段可见可点。 */
+  private ensurePopupVisible(): void {
+    const idx = this.selected;
+    if (idx < 0 || idx >= this.lessons.length) {
+      return;
+    }
+    // 等画布按新高度布局完再滚，否则 scrollTo 会被旧的内容高度夹住。
+    setTimeout(() => {
+      if (this.selected !== idx) {
+        return;
+      }
+      const yOffset = this.scroller.currentOffset().yOffset;
+      // 画布坐标 y 在视口里的位置 = y + 20（Column 顶部 padding）- yOffset。
+      const need = this.popupBottom(idx) + 20 - this.viewportH;
+      if (need > yOffset + 1) {
+        this.scroller.scrollTo({ xOffset: 0, yOffset: need, animation: { duration: 300, curve: Curve.EaseOut } });
+      }
+    }, 32);
+  }
+
   private banners(): Banner[] {
     const out: Banner[] = [];
     if (this.lessons.length > 0) {
@@ -222,9 +264,10 @@ export struct PathMap {
   private scrollToCurrent(animated: boolean): void {
     const id = this.currentMainlineId();
     const idx = this.lessons.findIndex((n: PathMapNode) => n.id === id);
-    if (idx <= 1) {
+    if (idx < 0) {
       return;
     }
+    // 靠前的节点算出来的 yOffset 会被 max(0, …) 夹到顶部，同样要滚（「回到当前」从后面单元滚回来）。
     setTimeout(() => {
       this.scroller.scrollTo({
         xOffset: 0,
@@ -502,8 +545,15 @@ export struct PathMap {
       .backgroundColor(this.popupAccent(index))
       .borderRadius(R.large)
     }
-    .position({ x: 24, y: this.posY(index) + NODE / 2 + 30 })
+    .position({ x: 24, y: this.popupTop(index) })
     .zIndex(10)
+    .onAreaChange((_o: Area, a: Area) => {
+      const h = Number(a.height);
+      if (h > 0 && Math.abs(h - this.popupH) > 0.5) {
+        this.popupH = h;
+      }
+      this.ensurePopupVisible();
+    })
     .transition(TransitionEffect.OPACITY.combine(TransitionEffect.scale({ x: 0.85, y: 0.85 })))
   }
 
@@ -567,7 +617,7 @@ export struct PathMap {
             if (this.selected >= 0 && this.selected < this.lessons.length) {
               Column()
                 .width(STAGE_W)
-                .height(this.totalHeight())
+                .height(this.stageHeight())
                 .backgroundColor('#01000000')
                 .onClick(() => {
                   this.selected = -1;
@@ -576,7 +626,7 @@ export struct PathMap {
             }
           }
           .width(STAGE_W)
-          .height(this.totalHeight())
+          .height(this.stageHeight())
         }
         .width('100%')
         .padding({ top: 20, bottom: 20 })

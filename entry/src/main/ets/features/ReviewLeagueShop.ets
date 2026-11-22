@@ -9,6 +9,7 @@ import { gradeAnswer, instructionText } from '../domain/Grade';
 import { renderMathText } from '../domain/MathText';
 import { MistakeEntry, Question } from '../models/Types';
 import { ProgressStore } from '../stores/ProgressStore';
+import { DataLoader } from '../services/DataLoader';
 import { AudioPlayer, SFXEngine } from '../services/Audio';
 import { Haptics } from '../services/Feedback';
 import { CardBox, ChunkyButton, DuoIcon, IconBadge, ModalCard, Pill, ProgressBar, SmallChunkyButton, TitleBar } from '../components/Kit';
@@ -42,6 +43,15 @@ export struct ReviewTab {
       !dueIds.has(`${e.lessonId}#${e.question.id}`) && !SRS.isGraduated(e));
   }
 
+  /** 备份导入等路径会丢 lessonTitle：按 lessonId 回查课本大纲，查不到才显示原始 ID。 */
+  private lessonTitleOf(e: MistakeEntry): string {
+    const t = e.lessonTitle;
+    if (t !== null && t !== undefined && t.length > 0) {
+      return t;
+    }
+    return DataLoader.lessonTitle(e.lessonId) ?? e.lessonId;
+  }
+
   @Builder
   entryRow(e: MistakeEntry) {
     Row({ space: 12 }) {
@@ -50,7 +60,7 @@ export struct ReviewTab {
         Text(renderMathText(e.question.question)).fontSize(F.caption).fontWeight(W.bold).fontColor(C.ink)
           .maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
         Row({ space: 6 }) {
-          Text(e.lessonTitle ?? e.lessonId).fontSize(F.micro).fontWeight(W.bold).fontColor(C.inkMuted).maxLines(1)
+          Text(this.lessonTitleOf(e)).fontSize(F.micro).fontWeight(W.bold).fontColor(C.inkMuted).maxLines(1)
           if (SRS.isGraduated(e)) {
             Pill('已掌握', '#FFFFFF', C.primary)
           } else {
@@ -364,7 +374,7 @@ export struct LeagueTab {
       Row({ space: 10 }) {
         DuoIcon({ name: 'trophy', sz: 26, color: C.bee })
         Column({ space: 1 }) {
-          Text(`${League.tier(this.store.leagueTierId).name}联赛`).fontSize(F.subhead).fontWeight(W.heavy).fontColor(C.ink)
+          Text(League.tier(this.store.leagueTierId).name).fontSize(F.subhead).fontWeight(W.heavy).fontColor(C.ink)
           Text('每周一结算 · 前 5 名晋级').fontSize(F.micro).fontWeight(W.bold).fontColor(C.inkMuted)
         }
         .alignItems(HorizontalAlign.Start)

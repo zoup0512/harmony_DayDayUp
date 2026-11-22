@@ -365,18 +365,42 @@ export struct TTSButton {
   @Param slowCapable: boolean = false;
   player: AudioPlayer = AudioPlayer.shared;
   settings: SettingsStore = SettingsStore.shared;
+  /** AudioPlayer 的 @Trace 直读不触发重绘，靠 onChange 同步到这两个镜像。 */
+  @Local playing: boolean = false;
+  @Local slow: boolean = false;
+  private ownRunId: number = -1;
+  private unsubPlayer: () => void = () => {
+  };
+
+  aboutToAppear(): void {
+    this.syncPlayer();
+    this.unsubPlayer = this.player.onChange(() => this.syncPlayer());
+  }
+
+  aboutToDisappear(): void {
+    this.unsubPlayer();
+  }
+
+  /** 课文句（highlightIndex ≥ 0）：单句或「朗读全文」播到这一句都高亮；其它按钮只认自己发起的那次播放。 */
+  private syncPlayer(): void {
+    const p = this.player;
+    this.playing = p.isPlaying &&
+      (this.highlightIndex >= 0 ? p.nowPlayingIndex === this.highlightIndex : p.currentRunId === this.ownRunId);
+    this.slow = p.isSlowMode;
+  }
 
   build() {
     if (this.player.canPlay(this.path)) {
       Stack({ alignContent: Alignment.BottomEnd }) {
         Stack() {
-          DuoIcon({ name: this.settings.isMuted ? 'speakerSlash' : 'speaker', sz: this.sz, color: C.primary })
+          DuoIcon({ name: this.settings.isMuted ? 'speakerSlash' : 'speaker', sz: this.sz,
+            color: this.playing ? '#FFFFFF' : C.primary })
         }
         .padding(8)
-        .backgroundColor(alpha(C.primary, 0.12))
+        .backgroundColor(this.playing ? C.primary : alpha(C.primary, 0.12))
         .borderRadius(999)
 
-        if (this.slowCapable && this.player.isSlowMode) {
+        if (this.slowCapable && this.slow) {
           Text('🐢').fontSize(this.sz * 0.6)
         }
       }
@@ -393,10 +417,12 @@ export struct TTSButton {
         } else {
           this.player.playOne(this.path);
         }
+        this.ownRunId = this.player.currentRunId;
+        this.syncPlayer();
       })
       .gesture(LongPressGesture({ duration: 450 }).onAction(() => {
         if (this.slowCapable) {
-          this.player.isSlowMode = !this.player.isSlowMode;
+          this.player.setSlowMode(!this.player.isSlowMode);
           Haptics.tap();
         }
       }))
@@ -428,19 +454,33 @@ export struct MuteToggle {
 @ComponentV2
 export struct SlowModeBadge {
   player: AudioPlayer = AudioPlayer.shared;
+  @Local slow: boolean = false;
+  private unsubPlayer: () => void = () => {
+  };
+
+  aboutToAppear(): void {
+    this.slow = this.player.isSlowMode;
+    this.unsubPlayer = this.player.onChange(() => {
+      this.slow = this.player.isSlowMode;
+    });
+  }
+
+  aboutToDisappear(): void {
+    this.unsubPlayer();
+  }
 
   build() {
     Row({ space: 4 }) {
       Text('🐢').fontSize(14)
-      Text(this.player.isSlowMode ? '慢速中' : '慢速').fontSize(F.micro).fontWeight(W.bold)
-        .fontColor(this.player.isSlowMode ? C.primary : C.inkMuted)
+      Text(this.slow ? '慢速中' : '慢速').fontSize(F.micro).fontWeight(W.bold)
+        .fontColor(this.slow ? C.primary : C.inkMuted)
     }
     .padding({ left: 10, right: 10, top: 8, bottom: 8 })
-    .backgroundColor(this.player.isSlowMode ? alpha(C.primary, 0.14) : C.surfaceAlt)
+    .backgroundColor(this.slow ? alpha(C.primary, 0.14) : C.surfaceAlt)
     .borderRadius(999)
-    .border({ width: 1.5, color: this.player.isSlowMode ? alpha(C.primary, 0.5) : C.border, radius: 999 })
+    .border({ width: 1.5, color: this.slow ? alpha(C.primary, 0.5) : C.border, radius: 999 })
     .onClick(() => {
-      this.player.isSlowMode = !this.player.isSlowMode;
+      this.player.setSlowMode(!this.player.isSlowMode);
       Haptics.tap();
     })
   }
@@ -455,40 +495,57 @@ export struct ReadAllButton {
   };
   @Event onCompleted: () => void = () => {
   };
-  @Local player: AudioPlayer = AudioPlayer.shared;
+  player: AudioPlayer = AudioPlayer.shared;
+  /** 本按钮发起的整篇朗读正在播放（onChange 镜像；@Trace 直读不触发重绘）。 */
+  @Local running: boolean = false;
   private runActive: boolean = false;
   private countAtStart: number = 0;
   private runId: number = 0;
+  private unsubPlayer: () => void = () => {
+  };
+
+  aboutToAppear(): void {
+    this.unsubPlayer = this.player.onChange(() => this.onPlayerChange());
+  }
+
+  aboutToDisappear(): void {
+    this.unsubPlayer();
+  }
 
   private hasAudio(): boolean {
     return this.player.hasAnyResolvable(this.sentences.map((s: PassageSentence) => s.audio));
   }
 
-  @Monitor('player.isPlaying')
-  onPlayingChange(): void {
-    if (!this.runActive || this.player.isPlaying) {
-      return;
+  /** 整队自然播完（计数 +1 且仍是本次 run）才算完成；被 stop / 单句打断不算。 */
+  private onPlayerChange(): void {
+    const p = this.player;
+    if (this.runActive && (!p.isPlaying || p.currentRunId !== this.runId)) {
+      this.runActive = false;
+      if (p.queueCompletionCount > this.countAtStart && p.currentRunId === this.runId) {
+        this.onCompleted();
+      }
     }
-    this.runActive = false;
-    if (this.player.queueCompletionCount > this.countAtStart && this.player.currentRunId === this.runId) {
-      this.onCompleted();
-    }
+    this.running = this.runActive && p.isPlaying;
+  }
+
+  private showStop(): boolean {
+    return this.running && !this.disabledExternally;
   }
 
   build() {
     SmallChunkyButton({
-      label: this.hasAudio() ? (this.player.isPlaying && this.runActiveVisible() ? '停止朗读' : '朗读全文') : '音频还没下载完',
-      icon: this.hasAudio() ? (this.player.isPlaying && this.runActiveVisible() ? 'stop' : 'play') : 'downloadCircle',
-      bgColor: this.hasAudio() ? (this.player.isPlaying && this.runActiveVisible() ? C.danger : C.primary) : C.inkSofter,
-      shadowColor: this.hasAudio() ? (this.player.isPlaying && this.runActiveVisible() ? C.dangerDark : C.primaryDark) :
-        C.inkMuted,
+      label: this.hasAudio() ? (this.showStop() ? '停止朗读' : '朗读全文') : '音频还没下载完',
+      icon: this.hasAudio() ? (this.showStop() ? 'stop' : 'play') : 'downloadCircle',
+      bgColor: this.hasAudio() ? (this.showStop() ? C.danger : C.primary) : C.inkSofter,
+      shadowColor: this.hasAudio() ? (this.showStop() ? C.dangerDark : C.primaryDark) : C.inkMuted,
       active: this.hasAudio() && !this.disabledExternally,
       onTap: () => {
         if (!this.hasAudio()) {
           return;
         }
-        if (this.player.isPlaying) {
+        if (this.running) {
           this.runActive = false;
+          this.running = false;
           this.player.stop();
         } else {
           Haptics.tap();
@@ -497,15 +554,12 @@ export struct ReadAllButton {
           if (this.player.isPlaying) {
             this.runId = this.player.currentRunId;
             this.runActive = true;
+            this.running = true;
             this.onStarted();
           }
         }
       }
     })
-  }
-
-  private runActiveVisible(): boolean {
-    return !this.disabledExternally;
   }
 }
 

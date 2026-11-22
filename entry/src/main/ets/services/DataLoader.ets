@@ -126,6 +126,32 @@ export class DataLoader {
     }
   }
 
+  /** 课程 ID → 显示标题。`<bookId>-u<n>-kp<i>` 取大纲知识点名，`<bookId>-u<n>-…`（如单元挑战）
+   *  取课程文件标题；书没下载或 ID 不认识时返回 null。 */
+  static lessonTitle(lessonId: string): string | null {
+    const kp = /^(.+)-u(\d+)-kp(\d+)$/.exec(lessonId);
+    if (kp !== null) {
+      const outline = DataLoader.tryOutline(kp[1]);
+      const unitNo = Number(kp[2]);
+      const unit = outline?.units.find((u: Unit) => u.unit_number === unitNo);
+      const i = Number(kp[3]) - 1;
+      if (unit !== undefined && i >= 0 && i < unit.knowledge_points.length) {
+        const name = unit.knowledge_points[i].name;
+        if (typeof name === 'string' && name.length > 0) {
+          return name;
+        }
+      }
+    }
+    const other = /^(.+)-u\d+-/.exec(lessonId);
+    if (other !== null) {
+      const title = DataLoader.tryLesson(other[1], lessonId)?.title;
+      if (title !== undefined && title !== null && title.length > 0) {
+        return title;
+      }
+    }
+    return null;
+  }
+
   static questionCount(bookId: string, lessonId: string): number {
     return DataLoader.tryLesson(bookId, lessonId)?.questions.length ?? 0;
   }
