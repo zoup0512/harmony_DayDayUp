@@ -52,3 +52,12 @@
 - Real-device screenshots / UI dumps (`/*.jpeg`, `/lay*.json`) are gitignored.
 - `harmony_push.bat` never stores the token in `.git/config` (one-shot
   `http.extraheader`); remote URL must stay credential-free.
+
+## UI state conventions (real-device findings)
+- Components refresh via `ProgressStore.onChange` / `Router.onChange` /
+  `SettingsStore.onChange`; each returns an unsubscribe fn — store it and call
+  it in `aboutToDisappear` (dead listeners leak and re-run rebuilds).
+- System back: `Index.onBackPress` → `Router.handleBack()`; pages with modal
+  state register `Router.shared.interceptBack(() => boolean)` (true = handled).
+- Theme/dark: `Palette.apply()` from `Index.applyPalette()`; on change the whole
+  shell re-mounts via `ForEach([themeRev])` because `C.xxx` is read at build time.

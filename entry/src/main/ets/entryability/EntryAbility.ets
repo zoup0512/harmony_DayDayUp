@@ -1,16 +1,18 @@
 // EntryAbility —— 应用上下文初始化 + 载入 Index。
 // UIAbilityContext 是整个服务的根：文件、缓存、Preferences、resourceManager 都从它派生。
-import { AbilityConstant, UIAbility, Want } from '@kit.AbilityKit';
+import { AbilityConstant, Configuration, ConfigurationConstant, UIAbility, Want } from '@kit.AbilityKit';
 import { window } from '@kit.ArkUI';
 import { AppEnv } from '../services/Files';
 import { ProgressStore } from '../stores/ProgressStore';
 import { AudioPlayer } from '../services/Audio';
+import { SettingsStore } from '../stores/SettingsStore';
 import { StreakReminders, ReminderContext } from '../services/Feedback';
 
 export default class EntryAbility extends UIAbility {
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     try {
       AppEnv.context = this.context;
+      SettingsStore.shared.setSystemDark(this.context.config.colorMode === ConfigurationConstant.ColorMode.COLOR_MODE_DARK);
     } catch (e) {
       // context 必须可用；启动失败会在页面呈现加载错误
       console.error(`[EntryAbility] context init failed ${JSON.stringify(e)}`);
@@ -19,6 +21,14 @@ export default class EntryAbility extends UIAbility {
 
   onWindowStageCreate(windowStage: window.WindowStage): void {
     windowStage.loadContent('pages/Index');
+  }
+
+  onConfigurationUpdate(config: Configuration): void {
+    // 固定浅色/深色时系统回报的是被强制后的模式，不能当成系统真实明暗。
+    if (SettingsStore.shared.appearance !== 'system') {
+      return;
+    }
+    SettingsStore.shared.setSystemDark(config.colorMode === ConfigurationConstant.ColorMode.COLOR_MODE_DARK);
   }
 
   onForeground(): void {

@@ -13,15 +13,15 @@ import { Files, AppEnv } from '../services/Files';
 import { fileIo as fs, picker } from '@kit.CoreFileKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { util } from '@kit.ArkTS';
-import { makeEnvelope, validateBackup } from '../domain/Backup';
+import { BackupEnvelope, makeEnvelope, validateBackup } from '../domain/Backup';
 import {
   BadgeData, ShareCardButton, StreakShareData
 } from '../components/ShareCard';
 import {
-  CardBox, ChunkyButton, DuoIcon, IconBadge, Pill, SmallChunkyButton, TitleBar
+  CardBox, ChunkyButton, DuoIcon, IconBadge, ModalCard, Pill, SmallChunkyButton, TitleBar
 } from '../components/Kit';
 import { Mascot } from '../components/Mascot';
-import { StreakCalendar, weekCalendar } from '../components/Widgets';
+import { DailyGoalRing, StreakCalendar, weekCalendar } from '../components/Widgets';
 import { AppRoute, Router } from './Router';
 
 /** 设置行：label + @BuilderParam 控件插槽。 */
@@ -55,9 +55,52 @@ struct SettingRow {
 export struct ProfileTab {
   store: ProgressStore = ProgressStore.shared;
   @Local rev: number = 0;
+  @Local editingName: boolean = false;
+  @Local nameDraft: string = '';
+
+  @Builder
+  nameDialog() {
+    ModalCard({ onBackdrop: () => {
+      this.editingName = false;
+    } }) {
+      Mascot({ mood: 'happy', sz: 72 })
+      Text('给自己起个名字').fontSize(F.heading).fontWeight(W.heavy).fontColor(C.ink)
+      TextInput({ text: this.nameDraft, placeholder: '昵称' })
+        .maxLength(12)
+        .fontSize(F.subhead)
+        .fontColor(C.ink)
+        .textAlign(TextAlign.Center)
+        .backgroundColor(C.surfaceAlt)
+        .borderRadius(R.card)
+        .height(54)
+        .defaultFocus(true)
+        .onChange((v: string) => {
+          this.nameDraft = v;
+        })
+      ChunkyButton({ label: '保存', variant: this.nameDraft.trim().length === 0 ? 'disabled' : 'primary',
+        onTap: () => {
+          const name = this.nameDraft.trim();
+          if (name.length > 0) {
+            this.store.setDisplayName(name);
+            Haptics.success();
+          }
+          this.editingName = false;
+        } })
+      ChunkyButton({ label: '取消', variant: 'ghost', onTap: () => {
+        this.editingName = false;
+      } })
+    }
+  }
+
+  private unsubStore: () => void = () => {
+  };
+
+  aboutToDisappear(): void {
+    this.unsubStore();
+  }
 
   aboutToAppear(): void {
-    this.store.onChange(() => {
+    this.unsubStore = this.store.onChange(() => {
       this.rev++;
     });
   }
@@ -74,6 +117,7 @@ export struct ProfileTab {
   }
 
   build() {
+    Stack() {
     Column() {
       ForEach([this.rev], (r: number) => {
       Scroll() {
@@ -81,7 +125,16 @@ export struct ProfileTab {
           Row({ space: 12 }) {
             Mascot({ mood: 'happy', sz: 64, allowsTap: true })
             Column({ space: 2 }) {
-              Text(this.store.displayName).fontSize(F.heading).fontWeight(W.heavy).fontColor(C.ink)
+              Row({ space: 6 }) {
+                Text(this.store.displayName).fontSize(F.heading).fontWeight(W.heavy).fontColor(C.ink)
+                DuoIcon({ name: 'pencil', sz: 15, color: C.inkSofter })
+              }
+              .onClick(() => {
+                Haptics.tap();
+                this.nameDraft = this.store.displayName;
+                this.editingName = true;
+              })
+              .accessibilityText('修改昵称')
               Text(`加入 ${Math.max(1, daysBetween(this.store.joinedDate, todayString()) + 1)} 天`).fontSize(F.caption).fontWeight(W.bold)
                 .fontColor(C.inkMuted)
             }
@@ -124,6 +177,23 @@ export struct ProfileTab {
             this.stat('star', C.bee, `${this.store.perfectedLessonCount}`, '满星课')
           }
           .padding({ left: 4, right: 4 })
+
+          CardBox() {
+            Row({ space: 16 }) {
+              DailyGoalRing({ sz: 70 })
+              Column({ space: 4 }) {
+                Text('今日目标').fontSize(F.subhead).fontWeight(W.heavy).fontColor(C.ink)
+                Text(`${this.store.todayXp} / ${this.store.dailyGoal} XP · 点圆环修改`).fontSize(F.caption)
+                  .fontColor(C.inkMuted)
+                if (this.store.dailyGoalReached) {
+                  Text('今日目标已完成 🎉').fontSize(F.caption).fontWeight(W.bold).fontColor(C.primary)
+                }
+              }
+              .alignItems(HorizontalAlign.Start)
+              .layoutWeight(1)
+            }
+            .width('100%')
+          }
 
           CardBox() {
             Row({ space: 12 }) {
@@ -176,6 +246,13 @@ export struct ProfileTab {
     .width('100%')
     .height('100%')
     .backgroundColor(C.bg)
+
+      if (this.editingName) {
+        this.nameDialog()
+      }
+    }
+    .width('100%')
+    .height('100%')
   }
 }
 
@@ -185,8 +262,15 @@ export struct AchievementsPage {
   store: ProgressStore = ProgressStore.shared;
   @Local rev: number = 0;
 
+  private unsubStore: () => void = () => {
+  };
+
+  aboutToDisappear(): void {
+    this.unsubStore();
+  }
+
   aboutToAppear(): void {
-    this.store.onChange(() => {
+    this.unsubStore = this.store.onChange(() => {
       this.rev++;
     });
   }
@@ -261,12 +345,86 @@ export struct SettingsPage {
   settings: SettingsStore = SettingsStore.shared;
   dl: AssetDownloader = AssetDownloader.shared;
   @Local backupMsg: string = '';
+  @Local confirmReset: boolean = false;
+  /** 已选好、待用户确认覆盖的存档。 */
+  @Local pendingImport: BackupEnvelope | null = null;
+  @Local reminderMsg: string = '';
+  /** 提醒开关被权限拒绝回滚时自增，强制 Toggle 按真实状态重绘。 */
+  @Local reminderRev: number = 0;
+  private unsubBack: () => void = () => {
+  };
+
+  aboutToAppear(): void {
+    this.unsubBack = Router.shared.interceptBack(() => {
+      if (this.confirmReset || this.pendingImport !== null) {
+        this.confirmReset = false;
+        this.pendingImport = null;
+        return true;
+      }
+      return false;
+    });
+  }
+
+  aboutToDisappear(): void {
+    this.unsubBack();
+  }
+
+  private rescheduleReminders(): void {
+    StreakReminders.reschedule(new ReminderContext(this.store.reminderStreak, this.store.dueMistakes.length),
+      this.store.studiedToday);
+  }
+
+  private toggleReminder(on: boolean): void {
+    if (!on) {
+      this.settings.setStreakReminder(false);
+      this.reminderMsg = '';
+      this.rescheduleReminders();
+      return;
+    }
+    StreakReminders.requestAuthorization().then((granted: boolean) => {
+      if (granted) {
+        this.settings.setStreakReminder(true);
+        this.reminderMsg = '';
+        this.rescheduleReminders();
+      } else {
+        this.settings.setStreakReminder(false);
+        this.reminderMsg = '没有通知权限，请在系统设置里允许「聪聪学堂」发送通知';
+        this.reminderRev++;
+      }
+    });
+  }
+
+  private pickReminderTime(): void {
+    const sel = new Date();
+    sel.setHours(this.settings.reminderHour, this.settings.reminderMinute, 0, 0);
+    this.getUIContext().showTimePickerDialog({
+      selected: sel,
+      useMilitaryTime: true,
+      onAccept: (v: TimePickerResult) => {
+        this.settings.setReminderTime(v.hour ?? this.settings.reminderHour, v.minute ?? this.settings.reminderMinute);
+        this.reminderRev++;
+        this.rescheduleReminders();
+      }
+    });
+  }
 
   @Builder
   switchCtl(on: boolean, change: (v: boolean) => void) {
     Toggle({ type: ToggleType.Switch, isOn: on })
       .selectedColor(C.primary)
       .onChange((v: boolean) => change(v))
+  }
+
+  @Builder
+  timeCtl() {
+    Text(this.settings.reminderTimeLabel)
+      .fontSize(F.subhead)
+      .fontWeight(W.heavy)
+      .fontColor(C.secondary)
+      .padding({ left: 14, right: 14, top: 8, bottom: 8 })
+      .backgroundColor(C.surfaceAlt)
+      .borderRadius(999)
+      .onClick(() => this.pickReminderTime())
   }
 
   @Builder
@@ -309,12 +467,10 @@ export struct SettingsPage {
         this.backupMsg = '存档已导出';
         Haptics.success();
       }).catch((err: BusinessError) => {
-        this.backupMsg = `导出取消/失败：${err.code}`;
+        this.backupMsg = `导出失败：${err.message ?? err.code}`;
       });
     } catch (e) {
-      const path = `${AppEnv.cacheDir()}/congcong-backup.json`;
-      Files.writeTextAtomic(path, json);
-      this.backupMsg = `存档已导出：${path}`;
+      this.backupMsg = '导出失败：系统文件选择器不可用';
     }
   }
 
@@ -343,18 +499,65 @@ export struct SettingsPage {
           this.backupMsg = `存档无效：${v.error ?? '格式错误'}`;
           return;
         }
-        this.store.importBackup(v.envelope);
-        this.backupMsg = '存档已导入';
-        Haptics.success();
+        this.pendingImport = v.envelope;
       }).catch((err: BusinessError) => {
-        this.backupMsg = `导入取消/失败：${err.code}`;
+        this.backupMsg = `导入失败：${err.message ?? err.code}`;
       });
     } catch (e) {
       this.backupMsg = '文件选择不可用';
     }
   }
 
+  @Builder
+  resetDialog() {
+    ModalCard({ onBackdrop: () => {
+      this.confirmReset = false;
+    } }) {
+      Mascot({ mood: 'sad', sz: 84 })
+      Text('确定要重置全部学习进度吗？').fontSize(F.heading).fontWeight(W.heavy).fontColor(C.ink)
+        .textAlign(TextAlign.Center)
+      Text('经验、宝石、连胜、错题本都会清空，此操作无法撤销。建议先导出存档。').fontSize(F.caption)
+        .fontColor(C.inkMuted).textAlign(TextAlign.Center)
+      ChunkyButton({ label: '重置进度', variant: 'danger', onTap: () => {
+        this.confirmReset = false;
+        this.store.resetProgress();
+        Haptics.wrong();
+        Router.shared.clear();
+      } })
+      ChunkyButton({ label: '取消', variant: 'ghost', onTap: () => {
+        this.confirmReset = false;
+      } })
+    }
+  }
+
+  @Builder
+  importDialog() {
+    ModalCard({ onBackdrop: () => {
+      this.pendingImport = null;
+    } }) {
+      DuoIcon({ name: 'download', sz: 40, color: C.secondary })
+      Text('导入将覆盖当前进度').fontSize(F.heading).fontWeight(W.heavy).fontColor(C.ink)
+      Text(`存档导出于 ${(this.pendingImport?.exportedAt ?? '').substring(0, 10)}` +
+        `（${this.pendingImport?.platform ?? '未知'}）。当前本机进度会被替换，建议先导出备份。`)
+        .fontSize(F.caption).fontColor(C.inkMuted).textAlign(TextAlign.Center)
+      ChunkyButton({ label: '覆盖并导入', variant: 'danger', onTap: () => {
+        const env = this.pendingImport;
+        this.pendingImport = null;
+        if (env !== null) {
+          this.store.importBackup(env);
+          this.backupMsg = '存档已导入';
+          Haptics.success();
+        }
+      } })
+      ChunkyButton({ label: '取消', variant: 'ghost', onTap: () => {
+        this.pendingImport = null;
+        this.backupMsg = '已取消导入';
+      } })
+    }
+  }
+
   build() {
+    Stack() {
     Column() {
       TitleBar({ title: '设置', onBack: () => Router.shared.pop() })
       Scroll() {
@@ -374,12 +577,21 @@ export struct SettingsPage {
 
           Text('提醒').fontSize(F.caption).fontWeight(W.bold).fontColor(C.inkMuted).width('100%')
             .margin({ top: 6 })
-          SettingRow({ title: '连胜提醒', subtitle: `每天 ${this.settings.reminderTimeLabel} 提醒续火`,
-            control: (): void => this.switchCtl(this.settings.streakReminderEnabled, (v: boolean) => {
-              this.settings.setStreakReminder(v);
-              StreakReminders.reschedule(new ReminderContext(this.store.reminderStreak,
-                this.store.dueMistakes.length), this.store.studiedToday);
-            }) })
+          ForEach([this.reminderRev], (rv: number) => {
+            Column({ space: 10 }) {
+              SettingRow({ title: '连胜提醒', subtitle: `每天 ${this.settings.reminderTimeLabel} 提醒续火`,
+                control: (): void => this.switchCtl(this.settings.streakReminderEnabled,
+                  (v: boolean) => this.toggleReminder(v)) })
+              if (this.settings.streakReminderEnabled) {
+                SettingRow({ title: '提醒时间', subtitle: '点右侧时间修改',
+                  control: (): void => this.timeCtl() })
+              }
+              if (this.reminderMsg.length > 0) {
+                Text(this.reminderMsg).fontSize(F.micro).fontColor(C.danger).width('100%')
+              }
+            }
+            .width('100%')
+          }, (rv: number) => `rem-${rv}`)
 
           Text('存档').fontSize(F.caption).fontWeight(W.bold).fontColor(C.inkMuted).width('100%')
             .margin({ top: 6 })
@@ -425,9 +637,8 @@ export struct SettingsPage {
             Column({ space: 10 }) {
               Text('清空本机全部学习进度（不可恢复）').fontSize(F.caption).fontColor(C.inkMuted)
               ChunkyButton({ label: '重置进度', variant: 'danger', onTap: () => {
-                this.store.resetProgress();
-                Haptics.wrong();
-                Router.shared.clear();
+                Haptics.tap();
+                this.confirmReset = true;
               } })
             }
             .width('100%')
@@ -443,5 +654,15 @@ export struct SettingsPage {
     .width('100%')
     .height('100%')
     .backgroundColor(C.bg)
+
+      if (this.confirmReset) {
+        this.resetDialog()
+      }
+      if (this.pendingImport !== null) {
+        this.importDialog()
+      }
+    }
+    .width('100%')
+    .height('100%')
   }
 }

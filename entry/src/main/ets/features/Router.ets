@@ -1,6 +1,5 @@
 // 导航：AppRoute 的鸿蒙版。所有跳转走 Router，以便同步一份可观察的路由栈（决定是否隐藏 Tab 栏）。
 import { LessonRunResult } from '../models/Types';
-import { Files } from '../services/Files';
 
 export type RouteName = 'bookList' | 'bookDetail' | 'lesson' | 'lessonResult' | 'review' | 'reviewRunner' |
   'achievements' | 'stories' | 'storyReader' | 'reading' | 'passageReader' | 'shop' | 'profile' | 'settings' |
@@ -77,9 +76,35 @@ export class Router {
   // @Trace 跨组件字段在这台机器上实测不派发，靠显式监听 + @Local 镜像驱动重绘。
   @Trace routes: AppRoute[] = [];
   private listeners: Array<() => void> = [];
+  /** 栈顶页面可拦截系统返回（例如做题中弹「确定退出」），返回 true 表示已处理。 */
+  private backInterceptors: Array<() => boolean> = [];
 
-  onChange(cb: () => void): void {
+  /** 返回取消订阅函数——组件须在 aboutToDisappear 调用，否则销毁后仍被回调。 */
+  onChange(cb: () => void): () => void {
     this.listeners.push(cb);
+    return () => {
+      this.listeners = this.listeners.filter((x: () => void) => x !== cb);
+    };
+  }
+
+  interceptBack(cb: () => boolean): () => void {
+    this.backInterceptors.push(cb);
+    return () => {
+      this.backInterceptors = this.backInterceptors.filter((x: () => boolean) => x !== cb);
+    };
+  }
+
+  /** 系统返回：先给最近注册的拦截器，再弹栈。栈空时返回 false 交给系统。 */
+  handleBack(): boolean {
+    const n = this.backInterceptors.length;
+    if (n > 0 && this.backInterceptors[n - 1]()) {
+      return true;
+    }
+    if (this.routes.length > 0) {
+      this.pop();
+      return true;
+    }
+    return false;
   }
 
   private emit(): void {

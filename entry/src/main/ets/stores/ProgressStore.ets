@@ -14,6 +14,7 @@ import { BackupEnvelope, makeEnvelope, userProgressFromEnvelope } from '../domai
 import { AppEnv, Files } from '../services/Files';
 import { DataLoader } from '../services/DataLoader';
 import { ReminderContext, StreakReminders } from '../services/Feedback';
+import { SettingsStore } from './SettingsStore';
 import { WidgetSync } from '../services/WidgetSync';
 
 interface Prefs {
@@ -251,8 +252,11 @@ export class ProgressStore {
   private listeners: Array<() => void> = [];
 
   /** @Trace 跨组件字段实测不派发——组件侧改为 onChange + @Local 镜像驱动重绘。 */
-  onChange(cb: () => void): void {
+  onChange(cb: () => void): () => void {
     this.listeners.push(cb);
+    return () => {
+      this.listeners = this.listeners.filter((x: () => void) => x !== cb);
+    };
   }
 
   private emit(): void {
@@ -288,7 +292,17 @@ export class ProgressStore {
     }
   }
 
+  private lastReminderKey: string = '';
+
+  /** 只有提醒相关输入变化时才重排（心跳每 30s 调 refreshForNow，不能每次都 cancel+publish）。 */
   private reschedule(streak: number, studiedToday: boolean): void {
+    const st = SettingsStore.shared;
+    const key = `${streak}|${studiedToday}|${this.dueMistakes.length}|${todayString()}|` +
+      `${st.streakReminderEnabled}|${st.reminderHour}:${st.reminderMinute}`;
+    if (key === this.lastReminderKey) {
+      return;
+    }
+    this.lastReminderKey = key;
     StreakReminders.reschedule(new ReminderContext(streak, this.dueMistakes.length), studiedToday);
   }
 

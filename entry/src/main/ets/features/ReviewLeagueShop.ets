@@ -23,8 +23,15 @@ export struct ReviewTab {
   store: ProgressStore = ProgressStore.shared;
   @Local rev: number = 0;
 
+  private unsubStore: () => void = () => {
+  };
+
+  aboutToDisappear(): void {
+    this.unsubStore();
+  }
+
   aboutToAppear(): void {
-    this.store.onChange(() => {
+    this.unsubStore = this.store.onChange(() => {
       this.rev++;
     });
   }
@@ -289,8 +296,15 @@ export struct LeagueTab {
   store: ProgressStore = ProgressStore.shared;
   @Local rev: number = 0;
 
+  private unsubStore: () => void = () => {
+  };
+
+  aboutToDisappear(): void {
+    this.unsubStore();
+  }
+
   aboutToAppear(): void {
-    this.store.onChange(() => {
+    this.unsubStore = this.store.onChange(() => {
       this.rev++;
     });
   }
@@ -419,8 +433,15 @@ export struct ShopTab {
   store: ProgressStore = ProgressStore.shared;
   @Local rev: number = 0;
 
+  private unsubStore: () => void = () => {
+  };
+
+  aboutToDisappear(): void {
+    this.unsubStore();
+  }
+
   aboutToAppear(): void {
-    this.store.onChange(() => {
+    this.unsubStore = this.store.onChange(() => {
       this.rev++;
     });
   }

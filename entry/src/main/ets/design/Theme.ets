@@ -93,7 +93,20 @@ export class Palette {
   }
 
   get bg(): string {
+    const t = this.theme;
+    if (t !== null && (t.isDark || !this.dark)) {
+      return t.bg;
+    }
     return this.a('#FFFFFF', '#131F24');
+  }
+
+  /** 设置主题与明暗；有变化时返回 true（调用方据此整体重建界面）。 */
+  apply(theme: UiThemeData | null, dark: boolean): boolean {
+    const effectiveDark = dark || (theme?.isDark ?? false);
+    const changed = this.theme !== theme || this.dark !== effectiveDark;
+    this.theme = theme;
+    this.dark = effectiveDark;
+    return changed;
   }
 
   get bgSofter(): string {

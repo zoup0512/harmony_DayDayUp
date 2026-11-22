@@ -11,8 +11,10 @@ import { zlib } from '@kit.BasicServicesKit';
 export class DataLoader {
   private static outlineCache: Map<string, Outline> = new Map<string, Outline>();
   private static lessonCache: Map<string, Lesson> = new Map<string, Lesson>();
+  private static siteIndexCache: SiteIndex | null = null;
 
   static clearCache(): void {
+    DataLoader.siteIndexCache = null;
     DataLoader.outlineCache.clear();
     DataLoader.lessonCache.clear();
   }
@@ -21,16 +23,24 @@ export class DataLoader {
     return `${AppEnv.dataRoot()}/books/${bookId}`;
   }
 
+  /** 站点索引（本地 index.json，坏了回落内置）。结果缓存，clearCache() 失效。 */
   static loadSiteIndex(): SiteIndex {
+    const cached = DataLoader.siteIndexCache;
+    if (cached !== null) {
+      return cached;
+    }
+    let idx: SiteIndex | null = null;
     const local = Files.readText(`${AppEnv.dataRoot()}/index.json`);
     if (local !== null) {
       try {
-        return JSON.parse(local) as SiteIndex;
+        idx = JSON.parse(local) as SiteIndex;
       } catch (e) {
         // 回落到内置索引
       }
     }
-    return DataLoader.loadSeedIndex();
+    const out = idx ?? DataLoader.loadSeedIndex();
+    DataLoader.siteIndexCache = out;
+    return out;
   }
 
   static loadSeedIndex(): SiteIndex {
@@ -192,6 +202,7 @@ export class SeedInstaller {
           Files.move(`${stage}/${rel}`, dest);
         }
         Files.writeTextAtomic(stampPath, version);
+        DataLoader.clearCache();
       } finally {
         Files.remove(stage);
         Files.remove(zipPath);

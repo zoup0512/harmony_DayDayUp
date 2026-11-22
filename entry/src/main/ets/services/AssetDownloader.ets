@@ -142,17 +142,19 @@ export class AssetDownloader {
       const dir = DataLoader.bookDir(bookId);
       Files.mkdirs(`${dir}/lessons`);
 
-      // 1. outline（必须）
+      // 1. outline（必须）。先只解析不落盘——outline.json 是「已安装」标志，课程全部到位后才写。
       const outlineText = await this.fetchText(`${base}/outline.json`);
-      Files.writeTextAtomic(`${dir}/outline.json`, outlineText);
       const outline = JSON.parse(outlineText) as Outline;
 
-      // 2. 课文/故事/手册（可选，404 静默跳过）
+      // 2. 课文/故事/手册（可选）：只有站点明确 404 才删本地旧文件；网络抖动保留已有内容并中止。
       for (const name of ['passages.json', 'stories.json', 'guides.json']) {
         try {
           const text = await this.fetchText(`${base}/${name}`);
           Files.writeTextAtomic(`${dir}/${name}`, text);
         } catch (e) {
+          if ((e as Error).message !== 'HTTP 404') {
+            throw e as Error;
+          }
           Files.remove(`${dir}/${name}`);
         }
       }
@@ -167,32 +169,42 @@ export class AssetDownloader {
         collectAudioFromLesson(JSON.parse(text) as Lesson, audioRefs);
         this.bookProgress = new Map(this.bookProgress).set(bookId, (i + 1) / Math.max(1, lessonIds.length) * 0.35);
       }
+      Files.writeTextAtomic(`${dir}/outline.json`, outlineText);
+      DataLoader.clearCache();
 
       // 4. 课文/故事里的音频引用
       collectAudioFromFile(`${dir}/passages.json`, audioRefs);
       collectAudioFromFile(`${dir}/stories.json`, audioRefs);
 
-      // 5. 逐条下载音频（进度 0.35 → 1）
+      // 5. 音频（进度 0.35 → 1）：4 路并发；单条失败不阻塞整本书（TTS 按钮会自动隐藏）。
       const refs = Array.from(audioRefs);
-      for (let i = 0; i < refs.length; i++) {
-        const ref = refs[i];
+      const pending = refs.filter((ref: string) => {
         const local = AudioPlayer.localPathFor(ref);
-        if (local === null || Files.exists(local)) {
-          continue;
+        return local !== null && !Files.exists(local) && this.audioURL(ref) !== null;
+      });
+      let finished = refs.length - pending.length;
+      let cursor = 0;
+      const worker = async (): Promise<void> => {
+        while (cursor < pending.length) {
+          const ref = pending[cursor++];
+          const local = AudioPlayer.localPathFor(ref) as string;
+          try {
+            const bytes = await this.fetchBytes(this.audioURL(ref) as string);
+            Files.mkdirs(local.substring(0, local.lastIndexOf('/')));
+            Files.writeBytes(local, bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
+          } catch (e) {
+            // 跳过，下次下载会补
+          }
+          finished++;
+          this.bookProgress = new Map(this.bookProgress).set(bookId,
+            0.35 + finished / Math.max(1, refs.length) * 0.65);
         }
-        const url = this.audioURL(ref);
-        if (url === null) {
-          continue;
-        }
-        try {
-          const bytes = await this.fetchBytes(url);
-          Files.mkdirs(local.substring(0, local.lastIndexOf('/')));
-          Files.writeBytes(local, bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
-        } catch (e) {
-          // 单条音频失败不阻塞整本书（TTS 按钮会自动隐藏）
-        }
-        this.bookProgress = new Map(this.bookProgress).set(bookId, 0.35 + (i + 1) / Math.max(1, refs.length) * 0.65);
+      };
+      const workers: Promise<void>[] = [];
+      for (let w = 0; w < 4; w++) {
+        workers.push(worker());
       }
+      await Promise.all(workers);
 
       Files.writeTextAtomic(this.audioMarkerPath(bookId), `${refs.length}`);
       this.audioReadyCache.clear();

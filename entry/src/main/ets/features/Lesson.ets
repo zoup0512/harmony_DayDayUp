@@ -96,6 +96,11 @@ export struct LessonRunner {
   private startedAt: string = isoString();
   private floaterSeq: number = 0;
   private timer: number = -1;
+  @Local mHearts: number = ProgressStore.shared.hearts;
+  private unsubStore: () => void = () => {
+  };
+  private unsubBack: () => void = () => {
+  };
 
   private get lessonId(): string {
     return this.route.lessonId;
@@ -110,6 +115,10 @@ export struct LessonRunner {
   }
 
   aboutToAppear(): void {
+    this.unsubStore = this.store.onChange(() => {
+      this.mHearts = this.store.hearts;
+    });
+    this.unsubBack = Router.shared.interceptBack(() => this.onSystemBack());
     try {
       const l = DataLoader.loadLesson(this.route.bookId, this.lessonId);
       this.lesson = l;
@@ -143,7 +152,28 @@ export struct LessonRunner {
 
   aboutToDisappear(): void {
     clearInterval(this.timer);
+    this.unsubStore();
+    this.unsubBack();
     AudioPlayer.shared.stop();
+  }
+
+  /** 系统返回：先收起弹层/面板，再走与关闭按钮相同的「确定退出」流程。 */
+  private onSystemBack(): boolean {
+    if (this.showSettings || this.showReport) {
+      this.showSettings = false;
+      this.showReport = false;
+      return true;
+    }
+    if (this.showQuit) {
+      this.showQuit = false;
+      return true;
+    }
+    if (this.pendingResume !== null || this.showOutOfHearts) {
+      Router.shared.pop();
+      return true;
+    }
+    this.requestClose();
+    return true;
   }
 
   private current(): Question | undefined {
@@ -368,9 +398,9 @@ export struct LessonRunner {
         .borderRadius(999)
       }
       Row({ space: 3 }) {
-        DuoIcon({ name: 'heart', sz: 16, color: this.store.hearts > 0 ? C.danger : C.inkSofter })
-        Text(`${this.store.hearts}`).fontSize(F.body).fontWeight(W.heavy)
-          .fontColor(this.store.hearts > 0 ? C.danger : C.inkSofter)
+        DuoIcon({ name: 'heart', sz: 16, color: this.mHearts > 0 ? C.danger : C.inkSofter })
+        Text(`${this.mHearts}`).fontSize(F.body).fontWeight(W.heavy)
+          .fontColor(this.mHearts > 0 ? C.danger : C.inkSofter)
       }
 
       Stack() {

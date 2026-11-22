@@ -111,8 +111,15 @@ export struct LearnHome {
       DataLoader.tryLesson(b.id, id)?.questions.length ?? 0), this.store, DataLoader.examSlots(o, b.id));
   }
 
+  private unsubStore: () => void = () => {
+  };
+
+  aboutToDisappear(): void {
+    this.unsubStore();
+  }
+
   aboutToAppear(): void {
-    this.store.onChange(() => {
+    this.unsubStore = this.store.onChange(() => {
       this.rebuild();
     });
     this.rebuild();
@@ -593,23 +600,51 @@ export struct JumpTestPage {
   @Local done: boolean = false;
   @Local passed: boolean = false;
   @Local marked: number = 0;
+  @Local attempt: number = 1;
+  @Local loadError: string = '';
+  @Local heartsLeft: number = 0;
+  private sources: JumpQuestionSource[] = [];
 
   aboutToAppear(): void {
     const o = DataLoader.tryOutline(this.route.bookId);
     if (o === null) {
+      this.loadError = '课本还没下载好，先回去下载课本吧';
       return;
     }
-    const priors = priorLessonMetas(o, this.route.bookId, this.route.unitNumber);
+    // 与 iOS 一致：只考、只解锁还没学完的前置课。
+    const priors = priorLessonMetas(o, this.route.bookId, this.route.unitNumber)
+      .filter((m: PathLessonMeta) => !this.store.isLessonCompleted(m.id));
     this.priorIds = priors.map((m: PathLessonMeta) => m.id);
-    const sources: JumpQuestionSource[] = [];
     priors.forEach((m: PathLessonMeta) => {
       const l = DataLoader.tryLesson(this.route.bookId, m.id);
-      if (l !== null) {
-        sources.push(new JumpQuestionSource(m.id, l.questions));
+      if (l !== null && l.questions.length > 0) {
+        this.sources.push(new JumpQuestionSource(m.id, l.questions));
       }
     });
-    this.sampled = Jump.sampleQuestions(sources, Jump.testSize, `${this.route.bookId}-u${this.route.unitNumber}`);
+    if (this.sources.length === 0) {
+      this.loadError = '题库还没下载好，先回去下载课本吧';
+      return;
+    }
+    this.sample();
+  }
+
+  /** 每次重试换一套题（种子含尝试次数 + 本机盐），避免背答案。 */
+  private sample(): void {
+    this.sampled = Jump.sampleQuestions(this.sources, Jump.testSize,
+      `jump-${this.route.bookId}-u${this.route.unitNumber}-${this.attempt}-${this.store.leagueSalt ?? 'local'}`);
     this.questions = this.sampled.map((x: JumpSampledQuestion) => x.question);
+  }
+
+  private retry(): void {
+    this.attempt++;
+    this.index = 0;
+    this.answer = '';
+    this.phase = 'answering';
+    this.isCorrect = false;
+    this.correctCount = 0;
+    this.done = false;
+    this.passed = false;
+    this.sample();
   }
 
   private current(): Question | undefined {
@@ -625,9 +660,15 @@ export struct JumpTestPage {
       this.passed = acc >= Jump.passAccuracy;
       if (this.passed) {
         this.marked = this.store.applyJumpUnlock(this.priorIds);
+        Haptics.success();
+        SFXEngine.shared.play('complete');
+      } else {
+        // 失败扣 1 颗心，可以换套题再试。
+        this.store.loseHeart();
+        SFXEngine.shared.play('heartLoss');
+        Haptics.heartLoss();
       }
-      Haptics.success();
-      SFXEngine.shared.play(this.passed ? 'complete' : 'wrong');
+      this.heartsLeft = this.store.hearts;
       this.done = true;
       return;
     }
@@ -640,15 +681,47 @@ export struct JumpTestPage {
   build() {
     Column() {
       TitleBar({ title: '⚡ 跳级测试', onBack: () => Router.shared.pop() })
-      if (this.done) {
+      if (this.loadError.length > 0) {
+        Column({ space: 16 }) {
+          Mascot({ mood: 'think', sz: 110 })
+          Text(this.loadError).fontSize(F.body).fontColor(C.inkMuted).textAlign(TextAlign.Center)
+          ChunkyButton({ label: '返回', variant: 'ghost', onTap: () => Router.shared.pop() }).width(220)
+        }
+        .layoutWeight(1)
+        .justifyContent(FlexAlign.Center)
+        .padding(24)
+      } else if (this.done) {
         Column({ space: 16 }) {
           Mascot({ mood: this.passed ? 'proud' : 'sad', sz: 130 })
           Text(this.passed ? '挑战成功！' : '差一点点').fontSize(F.title).fontWeight(W.heavy).fontColor(C.ink)
           Text(this.passed ?
             `答对 ${this.correctCount}/${this.questions.length} 题，前面的 ${this.marked} 节课已为你解锁` :
-            `答对 ${this.correctCount}/${this.questions.length} 题，需要 80% 正确率`)
+            `答对 ${this.correctCount}/${this.questions.length} 题，需要 ${Math.round(Jump.passAccuracy * 100)}% 正确率
+先把前面的课程学扎实，或者再试一次！`)
             .fontSize(F.body).fontColor(C.inkMuted).textAlign(TextAlign.Center)
-          ChunkyButton({ label: '好的', onTap: () => Router.shared.clear() }).width(220)
+          if (this.passed) {
+            ChunkyButton({ label: '好的', onTap: () => Router.shared.clear() }).width(220)
+          } else {
+            Text(`已扣 1 颗心 · 剩余 ${this.heartsLeft}`).fontSize(F.caption).fontWeight(W.bold).fontColor(C.danger)
+            if (this.heartsLeft > 0) {
+              ChunkyButton({ label: '换一套题再试', onTap: () => {
+                Haptics.tap();
+                this.retry();
+              } }).width(240)
+            } else {
+              ChunkyButton({
+                label: `用宝石补满心再试  ${Economy.heartRefillCost}`,
+                variant: this.store.gems >= Economy.heartRefillCost ? 'secondary' : 'disabled',
+                onTap: () => {
+                  if (this.store.buyHeartRefill(Economy.heartRefillCost)) {
+                    SFXEngine.shared.play('purchase');
+                    this.retry();
+                  }
+                }
+              }).width(260)
+            }
+            ChunkyButton({ label: '返回', variant: 'ghost', onTap: () => Router.shared.pop() }).width(220)
+          }
         }
         .layoutWeight(1)
         .justifyContent(FlexAlign.Center)
@@ -656,7 +729,7 @@ export struct JumpTestPage {
       } else if (this.current() !== undefined) {
         ForEach([this.current() as Question], (q: Question) => {
           this.runner(q)
-        }, (q: Question) => `${this.index}-${q.id}`)
+        }, (q: Question) => `${this.attempt}-${this.index}-${q.id}`)
       } else {
         Column() {
           LoadingProgress().width(40).color(C.primary)
@@ -686,7 +759,7 @@ export struct JumpTestPage {
             .width('100%')
           QuestionRenderer({
             question: q, answer: this.answer, phase: this.phase, isCorrect: this.isCorrect,
-            qKey: `j${this.index}`, onAnswer: (a: string) => {
+            qKey: `j${this.attempt}-${this.index}`, onAnswer: (a: string) => {
               this.answer = a;
             }
           })

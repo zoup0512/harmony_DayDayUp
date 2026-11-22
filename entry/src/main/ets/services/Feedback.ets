@@ -119,7 +119,17 @@ export class StreakReminders {
   }
 
   /** 取消并重建 7 天提醒窗口。已学习则从明天开始。 */
-  static async reschedule(ctx: ReminderContext, studiedToday: boolean, now: Date = new Date()): Promise<void> {
+  private static chain: Promise<void> = Promise.resolve();
+
+  /** 串行化：cancel + publish 交错会产生重复或超出系统上限的提醒。 */
+  static reschedule(ctx: ReminderContext, studiedToday: boolean, now: Date = new Date()): Promise<void> {
+    StreakReminders.chain = StreakReminders.chain.then(() => StreakReminders.doReschedule(ctx, studiedToday, now))
+      .catch(() => {
+      });
+    return StreakReminders.chain;
+  }
+
+  private static async doReschedule(ctx: ReminderContext, studiedToday: boolean, now: Date): Promise<void> {
     if (!SettingsStore.shared.streakReminderEnabled) {
       await StreakReminders.cancel();
       return;

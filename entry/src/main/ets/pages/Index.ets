@@ -1,8 +1,8 @@
 // 应用根（MainShell）：种子安装 → 载入进度/设置 → 底部 Tab + 路由栈 + 全局结算弹层。
-import { curves } from '@kit.ArkUI';
+import { ConfigurationConstant } from '@kit.AbilityKit';
 import { C, F, W, alpha } from '../design/Theme';
 import { SeedInstaller } from '../services/DataLoader';
-import { Files } from '../services/Files';
+import { AppEnv } from '../services/Files';
 import { AssetDownloader } from '../services/AssetDownloader';
 import { ProgressStore, DailyRewardClaim } from '../stores/ProgressStore';
 import { SettingsStore } from '../stores/SettingsStore';
@@ -37,6 +37,8 @@ struct Index {
   @Local pendingReward: DailyRewardClaim | null = null;
   @Local pendingLeague: boolean = false;
   @Local onboarded: boolean = false;
+  /** 主题/明暗变化时自增，整棵界面按新配色重建（C.xxx 是构建期读取的普通值）。 */
+  @Local themeRev: number = 0;
 
   private get tabBarHidden(): boolean {
     const n = this.pushedRoutes.length;
@@ -44,7 +46,26 @@ struct Index {
   }
   private tickTimer: number = -1;
 
+  /** 装备的 UI 主题 + 外观设置 → Palette；有变化才重建，并同步系统控件（Toggle/弹层/状态栏）的明暗。 */
+  private applyPalette(): void {
+    const themeId = this.store.equippedTheme;
+    const theme = themeId.length > 0 && themeId !== 'theme_default' ? (this.store.equippedThemeData ?? null) : null;
+    if (!C.apply(theme, this.settings.prefersDark)) {
+      return;
+    }
+    this.themeRev++;
+    try {
+      const mode = C.dark ? ConfigurationConstant.ColorMode.COLOR_MODE_DARK :
+        (this.settings.appearance === 'system' && theme === null ? ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET :
+        ConfigurationConstant.ColorMode.COLOR_MODE_LIGHT);
+      AppEnv.ctx().getApplicationContext().setColorMode(mode);
+    } catch (e) {
+      // 仅影响系统控件配色
+    }
+  }
+
   aboutToAppear(): void {
+    this.settings.onChange(() => this.applyPalette());
     this.router.onChange(() => {
       this.pushedRoutes = this.router.routes;
     });
@@ -52,6 +73,7 @@ struct Index {
       this.pendingReward = this.store.pendingDailyReward;
       this.pendingLeague = this.store.pendingLeagueResult !== null;
       this.onboarded = this.store.hasCompletedOnboarding;
+      this.applyPalette();
     });
     this.settings.load();
     SeedInstaller.installIfNeeded().catch(() => {
@@ -59,6 +81,7 @@ struct Index {
       this.store.load();
       this.onboarded = this.store.hasCompletedOnboarding;
       this.store.refreshForNow();
+      this.applyPalette();
       this.ready = true;
       AssetDownloader.shared.refreshSiteIndexInBackground();
     });
@@ -76,6 +99,28 @@ struct Index {
 
   aboutToDisappear(): void {
     clearInterval(this.tickTimer);
+  }
+
+  /** 系统返回（侧滑/返回键）：弹层 → 页面拦截器 → 路由栈 → 回学习 Tab → 交给系统退出。 */
+  onBackPress(): boolean {
+    if (this.pendingReward !== null && !this.rewardDismissed) {
+      this.rewardDismissed = true;
+      this.store.dismissDailyReward();
+      return true;
+    }
+    if (this.pendingLeague && !this.leagueDismissed) {
+      this.leagueDismissed = true;
+      this.store.clearPendingLeagueResult();
+      return true;
+    }
+    if (this.router.handleBack()) {
+      return true;
+    }
+    if (this.ready && this.onboarded && this.tab !== 'learn') {
+      this.tab = 'learn';
+      return true;
+    }
+    return false;
   }
 
   @Builder
@@ -195,30 +240,35 @@ struct Index {
       } else if (!this.onboarded) {
         Onboarding()
       } else {
-        Column() {
+        ForEach([this.themeRev], (rev: number) => {
           Column() {
-            this.tabBody()
-          }
-          .layoutWeight(1)
+            // 非沉浸页面（课本列表/成就/设置…）只盖住内容区，底部 Tab 栏保持可见。
+            Stack() {
+              Column() {
+                this.tabBody()
+              }
+              .width('100%')
+              .height('100%')
 
-          if (!this.tabBarHidden) {
-            BottomTabBar({
-              active: this.tab, onSelect: (t: AppTab) => {
-                if (t !== this.tab) {
+              ForEach(this.pushedRoutes, (r: AppRoute, i: number) => {
+                this.routePage(r)
+              }, (r: AppRoute, i: number) => `${i}:${r.name}:${r.bookId}:${r.lessonId}:${r.itemId}`)
+            }
+            .layoutWeight(1)
+
+            if (!this.tabBarHidden) {
+              BottomTabBar({
+                active: this.tab, onSelect: (t: AppTab) => {
                   this.router.clear();
                   this.tab = t;
                 }
-              }
-            })
+              })
+            }
           }
-        }
-        .width('100%')
-        .height('100%')
-        .backgroundColor(C.bg)
-
-        ForEach(this.pushedRoutes, (r: AppRoute, i: number) => {
-          this.routePage(r)
-        }, (r: AppRoute, i: number) => `${i}:${r.name}:${r.bookId}:${r.lessonId}:${r.itemId}`)
+          .width('100%')
+          .height('100%')
+          .backgroundColor(C.bg)
+        }, (rev: number) => `theme-${rev}`)
 
         if (this.pendingReward !== null && !this.rewardDismissed) {
           this.dailyReward()

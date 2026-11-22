@@ -37,7 +37,34 @@ export class SettingsStore {
   @Trace reminderHour: number = 20;
   @Trace reminderMinute: number = 0;
 
+  /** 系统当前是否深色（EntryAbility 在启动与 onConfigurationUpdate 时写入）。 */
+  @Trace systemDark: boolean = false;
+
   private prefs: preferences.Preferences | null = null;
+  private listeners: Array<() => void> = [];
+
+  onChange(cb: () => void): () => void {
+    this.listeners.push(cb);
+    return () => {
+      this.listeners = this.listeners.filter((x: () => void) => x !== cb);
+    };
+  }
+
+  private emit(): void {
+    this.listeners.forEach((cb: () => void) => cb());
+  }
+
+  /** 外观设置 + 系统明暗 → 是否使用深色界面。 */
+  get prefersDark(): boolean {
+    return this.appearance === 'dark' || (this.appearance === 'system' && this.systemDark);
+  }
+
+  setSystemDark(v: boolean): void {
+    if (this.systemDark !== v) {
+      this.systemDark = v;
+      this.emit();
+    }
+  }
 
   load(): void {
     this.prefs = preferences.getPreferencesSync(AppEnv.ctx(), { name: 'cstf_settings' });
@@ -84,11 +111,13 @@ export class SettingsStore {
   setAppearance(v: AppAppearance): void {
     this.appearance = v;
     this.put(K_APPEARANCE, v);
+    this.emit();
   }
 
   setStreakReminder(v: boolean): void {
     this.streakReminderEnabled = v;
     this.put(K_REMINDER, v);
+    this.emit();
   }
 
   setReminderTime(hour: number, minute: number): void {
@@ -96,6 +125,7 @@ export class SettingsStore {
     this.reminderMinute = minute;
     this.put(K_HOUR, hour);
     this.put(K_MINUTE, minute);
+    this.emit();
   }
 
   get reminderTimeLabel(): string {
