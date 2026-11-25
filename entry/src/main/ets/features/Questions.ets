@@ -131,6 +131,8 @@ struct OptionCard {
   };
   @Local pressed: boolean = false;
   @Local dx: number = 0;
+  // 非 tall 卡片高度随文字换行变化；底座高度跟随实测值（'100%' 在无固定高度的 Stack 中会撑满整页）。
+  @Local cardH: number = 60;
 
   @Monitor('shake')
   onShake(): void {
@@ -145,7 +147,7 @@ struct OptionCard {
 
   build() {
     Stack({ alignContent: Alignment.Top }) {
-      Row().width('100%').height(this.tall ? TRUE_FALSE_CARD_HEIGHT : '100%')
+      Row().width('100%').height(this.tall ? TRUE_FALSE_CARD_HEIGHT : this.cardH)
         .borderRadius(R.card).backgroundColor(cardLedge(this.state)).margin({ top: 4 })
       Column() {
         if (this.tall) {
@@ -172,6 +174,12 @@ struct OptionCard {
       }
       .width('100%')
       .height(this.tall ? TRUE_FALSE_CARD_HEIGHT : undefined)
+      .onAreaChange((_o: Area, n: Area) => {
+        const h = Number(n.height);
+        if (h > 0 && h !== this.cardH) {
+          this.cardH = h;
+        }
+      })
       .backgroundColor(cardFill(this.state))
       .borderRadius(R.card)
       .border({ width: this.state === 'default' || this.state === 'disabled' ? 2 : 2.5, color: cardBorder(this.state), radius: R.card })
