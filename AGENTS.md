@@ -43,6 +43,22 @@
 - Lesson session resume: `ActiveLessonSession` + `lessonContentKey()` (sha256 of
   lesson minus audio) — stale sessions are dropped, not resumed.
 
+## Kids mode (Harmony-only, intentional deviation — `SettingsStore.kidsMode`, default ON)
+- Rules live in `domain/KidsMode.ets` (pure); reference design:
+  `D:\workspace\My\harmony\DayDayUp\docs\DESIGN.md` §2/§5.2/§5.4/§8.
+- No hearts lost (lesson + jump test). Wrong non-stretch questions → demons;
+  `completeLesson(..., extras)` seals that lesson's gem drip + knowledge card into
+  a `SealedChest` (XP still immediate). `RemedyPage`: correct original + `need`
+  variants (start 2, +1 per miss, cap 5; help modal after 3 misses in a row);
+  `unsealChest` returns gems + 2/demon bonus + card. Chests expire after 3 days.
+- Slots (non-exam, ≥4 questions): stretch = hardest (wrong ≠ demon), speed =
+  easiest choice/TF, 15 s, in-time correct = +xpPerCorrect bonus XP.
+- Knowledge cards: one per lesson, tier = stars (only upgrades), exams have none;
+  unit guardian unlocks when the unit is fully collected (derived, not stored).
+- With kids mode OFF the economy is the iOS one, except cards are still granted.
+- `sealedChests` / `knowledgeCards` are NOT in BackupEnvelope v1; `importBackup`
+  keeps the local ones.
+
 ## Repo hygiene
 - Standalone repo; parent congcong-school ignores `apps/harmony/`.
 - `build-profile.json5` is committed WITHOUT signing (`signingConfigs: []`).

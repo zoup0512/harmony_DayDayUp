@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>聪聪学堂 · 设计原型</title>
+  <style>
+    * { box-sizing: border-box; }
+    :root {
+      font-family: "HarmonyOS Sans SC", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+      color: #253520;
+      background: #f0f2e9;
+    }
+    body { margin: 0; }
+    .presentation { width: 1536px; margin: 0 auto; }
+    .board {
+      --tint: #def2c6;
+      --accent: #487d32;
+      --paper: #f7faf2;
+      --edge: #dce7d4;
+      position: relative;
+      isolation: isolate;
+      width: 1536px;
+      padding: 33px 76px 48px;
+      overflow: hidden;
+      background: radial-gradient(ellipse 710px 350px at 94% -8%, var(--tint), transparent),
+        linear-gradient(145deg, #ffffff 4%, var(--paper) 81%);
+    }
+    .board[data-page="2"] {
+      --tint: #ffedb4; --accent: #907223; --paper: #fffcf3; --edge: #eee4c9;
+    }
+    .board[data-page="3"] {
+      --tint: #e2efbc; --accent: #527d3b; --paper: #f7faf2; --edge: #e0e7d3;
+    }
+    .masthead { display: flex; align-items: center; justify-content: space-between; }
+    .brand { display: flex; align-items: center; gap: 10px; font-size: 18px; font-weight: 750; }
+    .brand-mark {
+      display: inline-block; width: 31px; height: 31px; position: relative;
+      border-radius: 10px; background: #539536;
+    }
+    .brand-mark::before, .brand-mark::after {
+      content: ""; position: absolute; top: 9px; width: 8px; height: 12px; background: #fffce6;
+    }
+    .brand-mark::before { left: 7px; transform: skewY(14deg); border-radius: 3px 1px 0 2px; }
+    .brand-mark::after { right: 7px; transform: skewY(-14deg); border-radius: 1px 3px 2px 0; }
+    .edition { margin: 0; color: #586653; font-size: 16px; line-height: 30px; letter-spacing: .55px; }
+    .intro {
+      display: flex; align-items: center; justify-content: space-between;
+      height: 114px; border-bottom: 1px solid var(--edge);
+    }
+    h1 { margin: 0; font-size: 56px; letter-spacing: -2.4px; line-height: 1.25; font-weight: 750; }
+    .intro-art { width: 120px; height: 56px; position: relative; }
+    .intro-art i { position: absolute; border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent); }
+    .intro-art i:nth-child(1) { width: 56px; height: 29px; left: 8px; top: 17px; transform: rotate(-23deg); border-radius: 100% 8% 97% 4%; background: #ddeec5; }
+    .intro-art i:nth-child(2) { width: 40px; height: 20px; left: 50px; top: 12px; transform: rotate(24deg); border-radius: 4% 90% 6% 92%; background: #f3f6d8; }
+    .intro-art i:nth-child(3) { width: 12px; height: 12px; right: 9px; top: 10px; background: #f0c43a; border: 0; transform: rotate(45deg); border-radius: 3px; }
+    .intro-art i:nth-child(4) { width: 4px; height: 4px; right: 0; top: 4px; background: var(--accent); border: 0; border-radius: 50%; }
+    .panels { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); column-gap: 46px; }
+    figure { margin: 0; }
+    figcaption { padding: 24px 0 17px; }
+    h2 { margin: 0 0 5px; font-size: 24px; line-height: 1.36; letter-spacing: -.5px; font-weight: 720; }
+    .description { margin: 0; color: #66715f; font-size: 16px; line-height: 1.48; }
+    .screen {
+      display: block; overflow: hidden; isolation: isolate;
+      background: #fff; border-radius: 28px;
+      outline: 1px solid rgba(51,74,37,.16);
+      box-shadow: 0 3px 7px rgba(43,61,32,.035), 0 14px 26px -13px rgba(47,65,35,.20);
+    }
+    .screen:focus-visible { outline: 3px solid var(--accent); outline-offset: 5px; }
+    .screen img { display: block; width: 100%; height: auto; aspect-ratio: 390/844; }
+    .board-nav {
+      margin: 0 auto; max-width: 1536px; display: flex; align-items: center; gap: 10px;
+      padding: 12px clamp(16px,5vw,76px); background: #fff; border-bottom: 1px solid #e3eadc;
+      font-size: 14px;
+    }
+    .board-nav a {
+      display: inline-flex; align-items: center; min-height: 36px; color: #435b38;
+      text-decoration: none; border-radius: 14px; padding: 0 12px;
+    }
+    .board-nav a:hover, .board-nav a:focus-visible { background: #edf5e5; }
+    .board-nav a:last-child { margin-left: auto; background: #e5f1d9; font-weight: 650; }
+    html.export .board-nav { display: none; }
+    @media (max-width: 700px) {
+      html:not(.export) .presentation, html:not(.export) .board { width: 100%; }
+      html:not(.export) .board { padding: 20px 19px 32px; }
+      html:not(.export) .intro { height: 75px; }
+      html:not(.export) h1 { font-size: 33px; letter-spacing: -.9px; }
+      html:not(.export) .brand { gap: 7px; font-size: 15px; }
+      html:not(.export) .edition { font-size: 12px; }
+      html:not(.export) .intro-art { transform: scale(.64); transform-origin: right center; }
+      html:not(.export) .panels { grid-template-columns: minmax(0, 1fr); }
+      html:not(.export) figcaption { padding: 19px 0 12px; }
+      html:not(.export) .board-nav { gap: 2px; padding: 6px 10px; }
+    }
+  </style>
+</head>
+<body>
+  <nav class="board-nav" aria-label="原型导览">
+    <a id="previous-board" href="?page=3">‹ 上一板</a>
+    <a id="next-board" href="?page=2">下一板 ›</a>
+    <a id="open-preview" href="index.html">打开可点击原型 ↗</a>
+  </nav>
+  <div class="presentation">
+    <main class="board" aria-labelledby="board-title">
+      <header>
+        <div class="masthead">
+          <div class="brand"><span class="brand-mark" aria-hidden="true"></span>聪聪学堂</div>
+          <p class="edition">HarmonyOS · 设计原型</p>
+        </div>
+        <div class="intro">
+          <h1 id="board-title"></h1>
+          <div class="intro-art" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+        </div>
+      </header>
+      <section class="panels" aria-label="手机画面"></section>
+    </main>
+  </div>
+  <script>
+    const pages = [
+      {
+        title: "从课本开始",
+        screens: [
+          ["home", "学习路径", "在单元地图上找到下一课"],
+          ["lesson", "课堂练习", "读题、选择答案，再检查"],
+          ["result", "课程结算", "查看本课星级、经验与奖励"]
+        ]
+      },
+      {
+        title: "把错题学会",
+        screens: [
+          ["review", "错题本", "从待复习的错题开始"],
+          ["remedy", "心魔试炼", "重做原题，再挑战变式题"],
+          ["cards", "知识卡册", "翻看收集到的课程知识卡"]
+        ]
+      },
+      {
+        title: "看见学习进度",
+        screens: [
+          ["league", "排行", "查看联赛规则和解锁进度"],
+          ["shop", "商店", "用宝石兑换补给和装扮"],
+          ["profile", "我的", "查看每日任务，领取宝石"]
+        ]
+      }
+    ];
+    const query = new URLSearchParams(location.search);
+    const exporting = query.get("export") === "1";
+    document.documentElement.classList.toggle("export", exporting);
+    const requestedPage = Number(query.get("page"));
+    const page = pages[requestedPage - 1] || pages[0];
+    const pageIndex = pages.indexOf(page);
+    document.querySelector(".board").dataset.page = String(pageIndex + 1);
+    document.getElementById("previous-board").href = "?page=" + ((pageIndex + pages.length - 1) % pages.length + 1);
+    document.getElementById("next-board").href = "?page=" + ((pageIndex + 1) % pages.length + 1);
+    document.getElementById("open-preview").href = "index.html#" + page.screens[0][0];
+    document.querySelector("h1").textContent = page.title;
+    document.title = page.title + " · 聪聪学堂";
+    const panels = document.querySelector(".panels");
+    panels.innerHTML = page.screens.map(([id,title,description]) => {
+      const url = "screens/" + id + ".png";
+      return '<figure><figcaption><h2>' + title + '</h2><p class="description">' + description
+        + '</p></figcaption><a class="screen" href="' + url + '" aria-label="打开' + title
+        + '单屏原图"><img width="780" height="1688" src="' + url + '" alt="' + title + '界面"></a></figure>';
+    }).join("");
+    function fitBoard() {
+      const width = document.documentElement.clientWidth;
+      document.querySelector(".presentation").style.zoom = width <= 700 && !exporting ? 1 : Math.min(1, width / 1536);
+    }
+    fitBoard();
+    window.addEventListener("resize", fitBoard);
+  </script>
+</body>
+</html>

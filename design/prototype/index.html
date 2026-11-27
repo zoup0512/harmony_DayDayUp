@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>聪聪学堂 · HarmonyOS 设计原型</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="recovery.css">
+  <link rel="stylesheet" href="tabs.css">
+  <script defer src="recovery.js"></script>
+  <script defer src="tabs.js"></script>
+  <script defer src="main.js"></script>
+</head>
+<body>
+  <header class="viewer-head">
+    <div class="viewer-brand"><span id="brand-icon"></span><b>聪聪学堂</b><i></i><span>HarmonyOS 设计原型</span></div>
+    <a class="board-link" href="boards.html?page=1">查看原型图 ↗</a>
+  </header>
+  <main class="studio">
+    <aside class="scene-menu">
+      <h2>场景导览</h2>
+      <nav id="scene-list" aria-label="原型场景"></nav>
+      <div class="mobile-picker"><label for="scene-picker">切换场景</label><select id="scene-picker"></select></div>
+    </aside>
+    <div class="phone-stage"><div class="phone-space"><section class="phone" id="phone" aria-label="手机界面"></section></div></div>
+    <aside class="scene-notes" aria-label="场景说明">
+      <div class="page-mark" id="page-mark"></div>
+      <p id="group-name"></p><h1 id="scene-name"></h1>
+      <p id="scene-desc"></p>
+      <div class="note-rule"></div><h3>试一试</h3><p id="scene-action"></p>
+      <div class="sources"><span>Harmony 页面依据</span><div id="source-ref"></div></div>
+      <a id="download" download>下载本屏 PNG ↓</a>
+    </aside>
+  </main>
+</body>
+</html>
