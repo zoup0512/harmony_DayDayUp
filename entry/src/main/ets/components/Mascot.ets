@@ -1,6 +1,7 @@
 // 熊猫「聪聪」：Canvas 矢量绘制（MascotView.swift 的逐笔移植）+ 呼吸 / 眨眼 / 张望 / 反应动画。
 import { curves } from '@kit.ArkUI';
 import { MascotMood, MascotReaction } from '../models/Types';
+import { Cosmetics } from '../domain/Catalog';
 import { ProgressStore } from '../stores/ProgressStore';
 import { Haptics } from '../services/Feedback';
 import { SFXEngine } from '../services/Audio';
@@ -20,6 +21,7 @@ export struct Mascot {
   @Param skin: string = '';
   @Param allowsTap: boolean = false;
   @Param still: boolean = false;
+  @Param illustrated: boolean = false;
 
   @Local breatheY: number = 0;
   @Local breatheScale: number = 1;
@@ -41,6 +43,10 @@ export struct Mascot {
 
   private activeSkin(): string {
     return this.skin.length > 0 ? this.skin : ProgressStore.shared.equippedMascotSkin;
+  }
+
+  private get showIllustration(): boolean {
+    return this.illustrated && this.activeSkin() === Cosmetics.defaultSkin;
   }
 
   aboutToAppear(): void {
@@ -69,7 +75,9 @@ export struct Mascot {
 
   @Monitor('mood', 'blink', 'gx', 'gy', 'skin', 'sz')
   onRedraw(): void {
-    this.draw();
+    if (!this.showIllustration) {
+      this.draw();
+    }
   }
 
   private startBreathing(): void {
@@ -451,11 +459,15 @@ export struct Mascot {
           })
           .transition(TransitionEffect.OPACITY)
       }
-      Canvas(this.ctx)
-        .width(this.sz)
-        .height(this.sz)
-        .onReady(() => this.draw())
-      if (this.mood === 'wave' && !this.still) {
+      if (this.showIllustration) {
+        Image($r('app.media.learning_hero')).width(this.sz).height(this.sz).objectFit(ImageFit.Contain)
+      } else {
+        Canvas(this.ctx)
+          .width(this.sz)
+          .height(this.sz)
+          .onReady(() => this.draw())
+      }
+      if (!this.showIllustration && this.mood === 'wave' && !this.still) {
         Ellipse()
           .width(this.sz * 18 / 120)
           .height(this.sz * 30 / 120)

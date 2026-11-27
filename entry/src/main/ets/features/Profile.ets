@@ -21,7 +21,7 @@ import {
   CardBox, ChunkyButton, DuoIcon, IconBadge, ModalCard, Pill, SmallChunkyButton, TitleBar
 } from '../components/Kit';
 import { Mascot } from '../components/Mascot';
-import { DailyGoalRing, StreakCalendar, weekCalendar } from '../components/Widgets';
+import { DailyGoalRing, DailyQuestsCard, StreakCalendar, weekCalendar } from '../components/Widgets';
 import { AppRoute, Router } from './Router';
 
 /** 设置行：label + @BuilderParam 控件插槽。 */
@@ -50,7 +50,7 @@ struct SettingRow {
   }
 }
 
-/** 「我的」Tab：连胜日历、每日目标、成就入口、设置入口。 */
+/** 「我的」Tab：连胜日历、每日目标与任务、成就、知识卡册、设置。 */
 @ComponentV2
 export struct ProfileTab {
   store: ProgressStore = ProgressStore.shared;
@@ -113,139 +113,161 @@ export struct ProfileTab {
       Text(label).fontSize(F.micro).fontWeight(W.bold).fontColor(C.inkMuted)
     }
     .layoutWeight(1)
+    .padding({ top: 8, bottom: 8 })
+    .backgroundColor(alpha(tint, C.dark ? 0.2 : 0.14))
+    .borderRadius(R.control)
     .alignItems(HorizontalAlign.Center)
+  }
+
+  @Builder
+  profileContents() {
+    Row({ space: 8 }) {
+      Mascot({ mood: 'happy', sz: 70, allowsTap: true, illustrated: true })
+      Column({ space: 2 }) {
+        Row({ space: 6 }) {
+          Text(this.store.displayName).fontSize(F.subhead).fontWeight(W.heavy).fontColor(C.ink)
+            .maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis }).flexShrink(1)
+          DuoIcon({ name: 'pencil', sz: 15, color: C.inkSofter })
+        }
+        .onClick(() => {
+          Haptics.tap();
+          this.nameDraft = this.store.displayName;
+          this.editingName = true;
+        })
+        .accessibilityText('修改昵称')
+        Text(`加入 ${Math.max(1, daysBetween(this.store.joinedDate, todayString()) + 1)} 天`).fontSize(F.caption).fontWeight(W.bold)
+          .fontColor(C.inkMuted)
+      }
+      .alignItems(HorizontalAlign.Start)
+      .layoutWeight(1)
+
+      ShareCardButton({
+        label: '分享连胜', filename: 'streak',
+        streak: new StreakShareData(this.store.displayStreak,
+          weekCalendar(this.store.weekXPEntries()), this.store.todayIndexInWeek())
+      })
+    }
+    .width('100%')
+    .padding({ left: 8, right: 8, top: 6, bottom: 6 })
+    .linearGradient({ angle: 110, colors: [[alpha(C.primary, 0.08), 0], [alpha(C.primary, 0.21), 1]] })
+    .borderRadius(R.large)
+    .border({ width: 1, color: alpha(C.primary, 0.3) })
+
+    CardBox() {
+      Column({ space: 12 }) {
+        Row({ space: 8 }) {
+          DuoIcon({ name: 'flame', sz: 17, color: C.fox })
+          Text(`${this.store.displayStreak} 天连胜`).fontSize(F.subhead).fontWeight(W.heavy)
+            .fontColor(C.ink).layoutWeight(1)
+          if (this.store.streakFreezes > 0) {
+            Pill(`护盾 ×${this.store.streakFreezes}`, '#FFFFFF', C.secondary)
+          }
+        }
+        .width('100%')
+
+        StreakCalendar({
+          entries: weekCalendar(this.store.weekXPEntries()),
+          todayIndex: this.store.todayIndexInWeek(),
+          todayStudied: this.store.studiedToday
+        })
+      }
+      .width('100%')
+    }
+
+    Row({ space: 6 }) {
+      this.stat('bolt', C.secondary, `${this.store.progress.xp}`, '总经验')
+      this.stat('gem', C.beetle, `${this.store.gems}`, '宝石')
+      this.stat('checkCircle', C.primary, `${this.store.totalCompletedLessons}`, '完成课')
+      this.stat('star', C.bee, `${this.store.perfectedLessonCount}`, '满星课')
+    }
+    .width('100%')
+
+    CardBox({ pad: 12 }) {
+      DailyGoalRing({ sz: 49, captionMode: 'full' })
+    }
+
+    DailyQuestsCard()
+
+    CardBox() {
+      Row({ space: 12 }) {
+        IconBadge('rosette', C.bee, 44, 20)
+        Column({ space: 2 }) {
+          Text('成就').fontSize(F.body).fontWeight(W.bold).fontColor(C.ink)
+          Text(`${this.store.unlockedAchievementIds.size} / ${Achievements.all.length} 解锁` +
+            (this.store.claimableAchievementCount > 0 ?
+              ` · ${this.store.claimableAchievementCount} 可领取` : ''))
+            .fontSize(F.micro).fontWeight(W.bold).fontColor(C.inkMuted)
+        }
+        .alignItems(HorizontalAlign.Start)
+        .layoutWeight(1)
+
+        DuoIcon({ name: 'chevronRight', sz: 18, color: C.inkSofter })
+      }
+      .width('100%')
+      .onClick(() => {
+        Haptics.tap();
+        Router.shared.push(new AppRoute('achievements'));
+      })
+    }
+
+    CardBox() {
+      Row({ space: 12 }) {
+        IconBadge('sparkles', C.secondary, 44, 20)
+        Column({ space: 2 }) {
+          Text('知识卡册').fontSize(F.body).fontWeight(W.bold).fontColor(C.ink)
+          Text(`已收集 ${this.store.knowledgeCardCount} 张 · 集齐单元召唤守护兽`).fontSize(F.micro)
+            .fontWeight(W.bold).fontColor(C.inkMuted)
+        }
+        .alignItems(HorizontalAlign.Start)
+        .layoutWeight(1)
+
+        DuoIcon({ name: 'chevronRight', sz: 18, color: C.inkSofter })
+      }
+      .width('100%')
+      .onClick(() => {
+        Haptics.tap();
+        Router.shared.push(new AppRoute('cards'));
+      })
+    }
+
+    CardBox() {
+      Row({ space: 12 }) {
+        IconBadge('gear', C.inkMuted, 44, 20)
+        Column({ space: 2 }) {
+          Text('设置').fontSize(F.body).fontWeight(W.bold).fontColor(C.ink)
+          Text('声音、触感、外观、提醒、存档').fontSize(F.micro).fontWeight(W.bold).fontColor(C.inkMuted)
+        }
+        .alignItems(HorizontalAlign.Start)
+        .layoutWeight(1)
+
+        DuoIcon({ name: 'chevronRight', sz: 18, color: C.inkSofter })
+      }
+      .width('100%')
+      .onClick(() => {
+        Haptics.tap();
+        Router.shared.push(new AppRoute('settings'));
+      })
+    }
   }
 
   build() {
     Stack() {
-    Column() {
-      ForEach([this.rev], (r: number) => {
       Scroll() {
-        Column({ space: 14 }) {
-          Row({ space: 12 }) {
-            Mascot({ mood: 'happy', sz: 64, allowsTap: true })
-            Column({ space: 2 }) {
-              Row({ space: 6 }) {
-                Text(this.store.displayName).fontSize(F.heading).fontWeight(W.heavy).fontColor(C.ink)
-                DuoIcon({ name: 'pencil', sz: 15, color: C.inkSofter })
-              }
-              .onClick(() => {
-                Haptics.tap();
-                this.nameDraft = this.store.displayName;
-                this.editingName = true;
-              })
-              .accessibilityText('修改昵称')
-              Text(`加入 ${Math.max(1, daysBetween(this.store.joinedDate, todayString()) + 1)} 天`).fontSize(F.caption).fontWeight(W.bold)
-                .fontColor(C.inkMuted)
-            }
-            .alignItems(HorizontalAlign.Start)
-            .layoutWeight(1)
-
-            ShareCardButton({
-              label: '分享连胜', filename: 'streak',
-              streak: new StreakShareData(this.store.displayStreak,
-                weekCalendar(this.store.weekXPEntries()), this.store.todayIndexInWeek())
-            })
-          }
-          .padding({ left: 4, right: 4, top: 14 })
-
-          CardBox() {
-            Column({ space: 12 }) {
-              Row({ space: 8 }) {
-                DuoIcon({ name: 'flame', sz: 17, color: C.fox })
-                Text(`${this.store.displayStreak} 天连胜`).fontSize(F.subhead).fontWeight(W.heavy)
-                  .fontColor(C.ink).layoutWeight(1)
-                if (this.store.streakFreezes > 0) {
-                  Pill(`护盾 ×${this.store.streakFreezes}`, '#FFFFFF', C.secondary)
-                }
-              }
-              .width('100%')
-
-              StreakCalendar({
-                entries: weekCalendar(this.store.weekXPEntries()),
-                todayIndex: this.store.todayIndexInWeek(),
-                todayStudied: this.store.studiedToday
-              })
+        Column() {
+          ForEach([this.rev], (r: number) => {
+            Column({ space: 14 }) {
+              this.profileContents()
             }
             .width('100%')
-          }
-
-          Row({ space: 8 }) {
-            this.stat('bolt', C.secondary, `${this.store.progress.xp}`, '总经验')
-            this.stat('gem', C.beetle, `${this.store.gems}`, '宝石')
-            this.stat('checkCircle', C.primary, `${this.store.totalCompletedLessons}`, '完成课')
-            this.stat('star', C.bee, `${this.store.perfectedLessonCount}`, '满星课')
-          }
-          .padding({ left: 4, right: 4 })
-
-          CardBox() {
-            Row({ space: 16 }) {
-              DailyGoalRing({ sz: 70 })
-              Column({ space: 4 }) {
-                Text('今日目标').fontSize(F.subhead).fontWeight(W.heavy).fontColor(C.ink)
-                Text(`${this.store.todayXp} / ${this.store.dailyGoal} XP · 点圆环修改`).fontSize(F.caption)
-                  .fontColor(C.inkMuted)
-                if (this.store.dailyGoalReached) {
-                  Text('今日目标已完成 🎉').fontSize(F.caption).fontWeight(W.bold).fontColor(C.primary)
-                }
-              }
-              .alignItems(HorizontalAlign.Start)
-              .layoutWeight(1)
-            }
-            .width('100%')
-          }
-
-          CardBox() {
-            Row({ space: 12 }) {
-              IconBadge('rosette', C.bee, 44, 20)
-              Column({ space: 2 }) {
-                Text('成就').fontSize(F.body).fontWeight(W.bold).fontColor(C.ink)
-                Text(`${this.store.unlockedAchievementIds.size} / ${Achievements.all.length} 解锁` +
-                  (this.store.claimableAchievementCount > 0 ?
-                    ` · ${this.store.claimableAchievementCount} 可领取` : ''))
-                  .fontSize(F.micro).fontWeight(W.bold).fontColor(C.inkMuted)
-              }
-              .alignItems(HorizontalAlign.Start)
-              .layoutWeight(1)
-
-              DuoIcon({ name: 'chevronRight', sz: 18, color: C.inkSofter })
-            }
-            .width('100%')
-            .onClick(() => {
-              Haptics.tap();
-              Router.shared.push(new AppRoute('achievements'));
-            })
-          }
-
-          CardBox() {
-            Row({ space: 12 }) {
-              IconBadge('gear', C.inkMuted, 44, 20)
-              Column({ space: 2 }) {
-                Text('设置').fontSize(F.body).fontWeight(W.bold).fontColor(C.ink)
-                Text('声音、触感、外观、提醒、存档').fontSize(F.micro).fontWeight(W.bold).fontColor(C.inkMuted)
-              }
-              .alignItems(HorizontalAlign.Start)
-              .layoutWeight(1)
-
-              DuoIcon({ name: 'chevronRight', sz: 18, color: C.inkSofter })
-            }
-            .width('100%')
-            .onClick(() => {
-              Haptics.tap();
-              Router.shared.push(new AppRoute('settings'));
-            })
-          }
-          Blank().height(30)
+          }, (r: number) => `${r}`)
         }
-        .padding({ left: 16, right: 16 })
+        .width('100%')
+        .padding({ left: 16, right: 16, top: 12, bottom: 24 })
       }
-      .layoutWeight(1)
+      .width('100%')
+      .height('100%')
       .align(Alignment.Top)
-      }, (r: number) => `${r}`)
-    }
-    .width('100%')
-    .height('100%')
-    .backgroundColor(C.bg)
+      .backgroundColor(C.bg)
 
       if (this.editingName) {
         this.nameDialog()
@@ -562,6 +584,11 @@ export struct SettingsPage {
       TitleBar({ title: '设置', onBack: () => Router.shared.pop() })
       Scroll() {
         Column({ space: 10 }) {
+          Text('学习方式').fontSize(F.caption).fontWeight(W.bold).fontColor(C.inkMuted).width('100%')
+            .margin({ top: 6 })
+          SettingRow({ title: '儿童模式（推荐）', subtitle: '答错不扣红心：先封存宝箱，收服心魔后返还；课内有神速题和踮脚题',
+            control: (): void => this.switchCtl(this.settings.kidsMode, (v: boolean) => this.settings.setKidsMode(v)) })
+
           Text('声音与触感').fontSize(F.caption).fontWeight(W.bold).fontColor(C.inkMuted).width('100%')
             .margin({ top: 6 })
           SettingRow({ title: '音效', subtitle: '答题反馈与庆祝的声音', control: (): void => this.switchCtl(!this.settings.isMuted,

@@ -275,6 +275,45 @@ export interface UserProgress {
 
   seenIntros?: string[] | null;
   reports?: QuestionReport[] | null;
+
+  // ---- 鸿蒙端独有（儿童模式 / 知识卡），不进 BackupEnvelope v1 ----
+  /** 被封存的课程宝箱（有心魔待收服）。 */
+  sealedChests?: SealedChest[] | null;
+  /** 知识卡：lessonId → 卡级（1 铜 / 2 银 / 3 金）。 */
+  knowledgeCards?: Record<string, number> | null;
+}
+
+/** 一只心魔 = 课上答错的一道题；订正原题 + 再答对 need 道同类题即收服。 */
+export interface DemonState {
+  questionId: number;
+  need: number;
+  variantsDone: number;
+  corrected: boolean;
+  wrongStreak: number;
+}
+
+/** 儿童模式下答错后被封存的课程宝箱：宝石与知识卡都锁在里面，收服全部心魔后返还。 */
+export interface SealedChest {
+  id: string;
+  bookId: string;
+  lessonId: string;
+  lessonTitle: string;
+  createdAt: string;
+  /** 过期日（dateKey）；过期后宝箱作废，错题仍留在错题本。 */
+  expiresOn: string;
+  gems: number;
+  cardTier: number;
+  demons: DemonState[];
+}
+
+/** 课程结算时的儿童模式附加信息。 */
+export class LessonExtras {
+  bookId: string = '';
+  lessonTitle: string = '';
+  /** 计入心魔的题（踮脚题答错不算）。 */
+  demonQuestionIds: number[] = [];
+  /** 神速题等额外 XP。 */
+  bonusXp: number = 0;
 }
 
 // ============================================================
@@ -310,6 +349,17 @@ export class LessonOutcome {
   weekendDoubled: boolean = false;
   freezesConsumed: number = 0;
   examDoubled: boolean = false;
+  /** 儿童模式：本课宝箱被封存时的宝箱 id（空 = 未封存）。 */
+  sealedChestId: string = '';
+  demonCount: number = 0;
+  /** 封存在宝箱里、收服心魔后返还的宝石。 */
+  sealedGems: number = 0;
+  /** 本课对应的知识卡级（0 = 没有卡，如单元挑战）。 */
+  cardTier: number = 0;
+  /** 知识卡已到手（未封存）且是新卡 / 升级。 */
+  cardNew: boolean = false;
+  cardUpgraded: boolean = false;
+  bonusXp: number = 0;
 
   get streakIncreased(): boolean {
     return this.streakAfter > this.streakBefore;

@@ -2,12 +2,13 @@
 import { curves } from '@kit.ArkUI';
 import { C, F, R, W, alpha, unitColors } from '../design/Theme';
 import { Economy } from '../domain/Economy';
-import { Chest, ChestSlot, ExamSlot } from '../domain/Catalog';
+import { Chest, ChestSlot, Cosmetics, ExamSlot } from '../domain/Catalog';
 import { LessonStatus, PathLessonMeta } from '../models/Types';
 import { ProgressStore } from '../stores/ProgressStore';
 import { SFXEngine } from '../services/Audio';
 import { Haptics } from '../services/Feedback';
 import { DuoIcon } from './Kit';
+import { Mascot } from './Mascot';
 
 export type NodeKindTag = 'lesson' | 'chest' | 'exam';
 
@@ -18,6 +19,7 @@ export class PathMapNode {
   unitTitle: string;
   status: LessonStatus;
   stars: number;
+  lessonNumber: number = 0;
   kind: NodeKindTag = 'lesson';
   chestClaimed: boolean = false;
   conquered: boolean = false;
@@ -47,6 +49,7 @@ export function buildPathNodes(bookId: string, lessons: PathLessonMeta[], store:
   const examByUnit = new Map<number, ExamSlot>();
   examSlots.forEach((e: ExamSlot) => examByUnit.set(e.unitNumber, e));
   const nodes: PathMapNode[] = [];
+  let lessonNumber = 0;
   lessons.forEach((row: PathLessonMeta, i: number) => {
     const stars = store.stars(row.id);
     const completed = stars > 0;
@@ -58,6 +61,8 @@ export function buildPathNodes(bookId: string, lessons: PathLessonMeta[], store:
       foundCurrent = true;
     }
     const n = new PathMapNode(row.id, row.title, row.unitNumber, row.unitTitle, status, stars);
+    lessonNumber = i > 0 && lessons[i - 1].unitNumber === row.unitNumber ? lessonNumber + 1 : 1;
+    n.lessonNumber = lessonNumber;
     n.questionCount = row.questionCount;
     n.unitLabel = row.unitLabel ?? null;
     nodes.push(n);
@@ -87,11 +92,13 @@ export function buildPathNodes(bookId: string, lessons: PathLessonMeta[], store:
   return nodes;
 }
 
-const OFFSETS: number[] = [0, 35, 45, 35, 0, -35, -45, -35];
-const NODE: number = 72;
-const STEP_Y: number = 96;
+const NODE_W: number = 52;
+const NODE_H: number = 37;
+const RIM: number = 5;
+const NODE_HIT_W: number = 72;
+const ROW_H: number = 64;
 const BANNER_H: number = 72;
-const STAGE_W: number = 340;
+const MAP_PADDING: number = 12;
 /** 开始弹窗实测前的高度估计（标题 + 副标题 + 按钮 + 内边距 + 尖角）。 */
 const POPUP_EST_H: number = 200;
 /** 弹窗底边与视口底边至少留出的距离。 */
@@ -100,13 +107,13 @@ const POPUP_MARGIN: number = 16;
 class Banner {
   unitNumber: number;
   unitTitle: string;
-  y: number;
+  firstIndex: number;
   label: string;
 
-  constructor(unitNumber: number, unitTitle: string, y: number, label: string) {
+  constructor(unitNumber: number, unitTitle: string, firstIndex: number, label: string) {
     this.unitNumber = unitNumber;
     this.unitTitle = unitTitle;
-    this.y = y;
+    this.firstIndex = firstIndex;
     this.label = label;
   }
 }
@@ -128,6 +135,7 @@ export struct PathMap {
   @Local shakeX: number = 0;
   @Local scrollY: number = 0;
   @Local viewportH: number = 600;
+  @Local stageW: number = 340;
   @Local bob: number = 0;
   @Local halo: number = 0;
   @Local pressedId: string = '';
@@ -142,7 +150,7 @@ export struct PathMap {
     setTimeout(() => {
       this.getUIContext().animateTo({ duration: 900, curve: Curve.EaseInOut, iterations: -1, playMode: PlayMode.Alternate },
         () => {
-          this.bob = -6;
+          this.bob = -3;
         });
       this.getUIContext().animateTo({ duration: 1400, curve: Curve.EaseOut, iterations: -1 }, () => {
         this.halo = 1;
@@ -182,30 +190,43 @@ export struct PathMap {
     return this.lessons.find((n: PathMapNode) => n.status === 'current' && n.kind !== 'exam')?.id ?? '';
   }
 
-  private bannerOffsetBefore(index: number): number {
-    let off = 0;
-    for (let i = 1; i < Math.min(index + 1, this.lessons.length); i++) {
-      if (this.lessons[i].unitNumber !== this.lessons[i - 1].unitNumber) {
-        off += BANNER_H + 24;
+  @Computed
+  get bannerOffsets(): number[] {
+    const offsets: number[] = [];
+    let offset = 0;
+    for (let i = 0; i < this.lessons.length; i++) {
+      if (i > 0 && this.lessons[i].unitNumber !== this.lessons[i - 1].unitNumber) {
+        offset += BANNER_H + 24;
       }
+      offsets.push(offset);
     }
-    return off;
+    return offsets;
   }
 
   private posX(index: number): number {
-    return STAGE_W / 2 + OFFSETS[index % OFFSETS.length];
+    return NODE_W / 2 + this.stageW * (index % 2 === 0 ? 0.05 : 0.22);
   }
 
   private posY(index: number): number {
-    return NODE / 2 + index * STEP_Y + this.bannerOffsetBefore(index) + BANNER_H + 24;
+    const step = Math.max(84, Math.min(140, (this.viewportH - BANNER_H - MAP_PADDING * 2) * 0.255));
+    return BANNER_H + step * (index + 0.5) + (this.bannerOffsets[index] ?? 0);
+  }
+
+  private connector(index: number): string {
+    // SVG path commands use physical pixels; placement and stroke lengths use vp.
+    const px = this.getUIContext().vp2px(1);
+    const start = this.posX(index) * px;
+    const end = this.posX(index + 1) * px;
+    const height = (this.posY(index + 1) - this.posY(index)) * px;
+    return `M ${start} 0 C ${start} ${height / 2} ${end} ${height / 2} ${end} ${height}`;
   }
 
   private totalHeight(): number {
-    return this.lessons.length === 0 ? NODE : this.posY(this.lessons.length - 1) + NODE / 2 + 160;
+    return this.lessons.length === 0 ? ROW_H : this.posY(this.lessons.length - 1) + ROW_H;
   }
 
   private popupTop(index: number): number {
-    return this.posY(index) + NODE / 2 + 30;
+    return this.posY(index) + ROW_H / 2 + 5;
   }
 
   private popupBottom(index: number): number {
@@ -233,27 +254,27 @@ export struct PathMap {
         return;
       }
       const yOffset = this.scroller.currentOffset().yOffset;
-      // 画布坐标 y 在视口里的位置 = y + 20（Column 顶部 padding）- yOffset。
-      const need = this.popupBottom(idx) + 20 - this.viewportH;
+      const need = this.popupBottom(idx) + MAP_PADDING - this.viewportH;
       if (need > yOffset + 1) {
         this.scroller.scrollTo({ xOffset: 0, yOffset: need, animation: { duration: 300, curve: Curve.EaseOut } });
       }
     }, 32);
   }
 
-  private banners(): Banner[] {
+  @Computed
+  get banners(): Banner[] {
     const out: Banner[] = [];
-    if (this.lessons.length > 0) {
-      const f = this.lessons[0];
-      out.push(new Banner(f.unitNumber, f.unitTitle, BANNER_H / 2 + 4, f.displayLabel));
-    }
-    for (let i = 1; i < this.lessons.length; i++) {
-      if (this.lessons[i].unitNumber !== this.lessons[i - 1].unitNumber) {
-        out.push(new Banner(this.lessons[i].unitNumber, this.lessons[i].unitTitle,
-          (this.posY(i - 1) + this.posY(i)) / 2, this.lessons[i].displayLabel));
+    for (let i = 0; i < this.lessons.length; i++) {
+      const n = this.lessons[i];
+      if (i === 0 || n.unitNumber !== this.lessons[i - 1].unitNumber) {
+        out.push(new Banner(n.unitNumber, n.unitTitle, i, n.displayLabel));
       }
     }
     return out;
+  }
+
+  private bannerTop(index: number): number {
+    return index === 0 ? 0 : (this.posY(index - 1) + this.posY(index) - BANNER_H) / 2;
   }
 
   private isUnitLocked(unit: number): boolean {
@@ -271,61 +292,68 @@ export struct PathMap {
     setTimeout(() => {
       this.scroller.scrollTo({
         xOffset: 0,
-        yOffset: Math.max(0, this.posY(idx) + 20 - this.viewportH / 2),
+        yOffset: Math.max(0, this.posY(idx) + MAP_PADDING - this.viewportH / 2),
         animation: animated ? { duration: 400, curve: Curve.EaseOut } : false
       });
     }, 300);
   }
 
-  private nodeIcon(n: PathMapNode, index: number): string {
+  private nodeIcon(n: PathMapNode): string {
     if (n.kind === 'chest') {
       return 'chest';
     }
     if (n.kind === 'exam') {
       return 'trophy';
     }
-    const later = this.lessons.slice(index + 1).some((x: PathMapNode) => x.kind === 'lesson' && x.unitNumber === n.unitNumber);
-    if (!later) {
-      return 'trophy';
-    }
-    if (n.status === 'completed' && n.stars > 0) {
-      return 'crown';
-    }
-    return index % 4 === 2 ? 'dumbbell' : 'star';
+    return n.status === 'completed' ? 'star' : (n.status === 'current' ? 'pencil' : 'lock');
   }
 
   private topColor(n: PathMapNode): string {
-    if (n.kind === 'chest' && n.chestClaimed) {
-      return C.lockedNodeTop;
+    if (n.status === 'locked' || n.chestClaimed) {
+      return C.dark ? C.lockedNodeTop : '#E5EAE3';
     }
-    if (n.kind === 'exam') {
-      return n.status === 'locked' ? C.lockedNodeTop : (n.conquered ? C.bee : C.beetle);
+    if (n.kind !== 'lesson') {
+      return n.kind === 'exam' && !n.conquered ? C.beetle : C.bee;
     }
-    return n.status === 'completed' ? C.bee : (n.status === 'current' ? unitColors(n.unitNumber)[0] : C.lockedNodeTop);
+    if (n.status === 'completed') {
+      return C.dark ? '#4B6341' : '#CCE6A3';
+    }
+    return C.primary === C.feather ? '#71CF46' : C.primary;
   }
 
   private ledgeColor(n: PathMapNode): string {
-    if (n.kind === 'chest' && n.chestClaimed) {
-      return C.lockedNodeLedge;
+    if (n.status === 'locked' || n.chestClaimed) {
+      return C.dark ? C.lockedNodeLedge : '#B5BFAF';
     }
-    if (n.kind === 'exam') {
-      return n.status === 'locked' ? C.lockedNodeLedge : (n.conquered ? '#CC9E00' : '#A45FD6');
+    if (n.kind !== 'lesson') {
+      return n.kind === 'exam' && !n.conquered ? '#A45FD6' : '#CC9E00';
     }
-    return n.status === 'completed' ? '#CC9E00' : (n.status === 'current' ? unitColors(n.unitNumber)[1] : C.lockedNodeLedge);
+    return n.status === 'completed' ? (C.dark ? '#374930' : '#97B970') :
+      (C.primary === C.feather ? '#478B30' : C.primaryDark);
   }
 
   private iconColor(n: PathMapNode): string {
-    if (n.kind === 'chest' && n.chestClaimed) {
-      return alpha(C.bee, 0.55);
+    if (n.status === 'locked' || n.chestClaimed) {
+      return C.dark ? C.inkMuted : '#788676';
     }
-    if (n.kind === 'exam' && n.status !== 'locked' && !n.conquered) {
-      return n.status === 'completed' ? C.bee : C.bee;
-    }
-    return n.status === 'locked' ? C.inkSofter : '#FFFFFF';
+    return n.status === 'completed' && n.kind === 'lesson' ? (C.dark ? '#FFE9A3' : '#859A42') : '#FFFFFF';
   }
 
-  private unitProgress(n: PathMapNode): number {
-    const ls = this.lessons.filter((x: PathMapNode) => x.kind === 'lesson' && x.unitNumber === n.unitNumber);
+  private statusLabel(n: PathMapNode): string {
+    if (n.kind === 'chest') {
+      return n.chestClaimed ? '已领取' : (n.status === 'locked' ? '未解锁' : '可领取');
+    }
+    return n.status === 'completed' ? '已完成' : (n.status === 'locked' ? '未解锁' :
+      (n.kind === 'exam' ? '可挑战' : '当前课程'));
+  }
+
+  private nodeCaption(n: PathMapNode): string {
+    const kind = n.kind === 'lesson' ? `第 ${n.lessonNumber} 课` : (n.kind === 'exam' ? '单元挑战' : '单元宝箱');
+    return `${kind} · ${this.statusLabel(n)}`;
+  }
+
+  private unitProgress(unit: number): number {
+    const ls = this.lessons.filter((x: PathMapNode) => x.kind === 'lesson' && x.unitNumber === unit);
     return ls.length === 0 ? 0 : ls.filter((x: PathMapNode) => x.status === 'completed').length / ls.length;
   }
 
@@ -363,142 +391,136 @@ export struct PathMap {
     }
   }
 
+  private bannerGrid(): string {
+    const px = this.getUIContext().vp2px(1);
+    const lines: string[] = [];
+    for (let x = 14; x < this.stageW; x += 14) {
+      lines.push(`M ${x * px} 0 v ${BANNER_H * px}`);
+    }
+    for (let y = 14; y < BANNER_H; y += 14) {
+      lines.push(`M 0 ${y * px} h ${this.stageW * px}`);
+    }
+    return lines.join(' ');
+  }
+
   @Builder
   bannerView(b: Banner) {
     Stack() {
-      Row().width(STAGE_W - 16).height(BANNER_H).borderRadius(R.card).backgroundColor(unitColors(b.unitNumber)[1])
-        .translate({ y: 4 })
-      Row() {
-        Column({ space: 5 }) {
-          if (this.isUnitLocked(b.unitNumber)) {
-            Text(`${b.label} · ${b.unitTitle}`).fontSize(F.caption).fontWeight(W.bold).fontColor('#E6FFFFFF')
-              .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
-            Row({ space: 5 }) {
-              Text('⚡').fontSize(12)
-              Text('跳到这里').fontSize(F.caption).fontWeight(W.bold).fontColor(unitColors(b.unitNumber)[0])
-            }
-            .padding({ left: 12, right: 12, top: 5, bottom: 5 })
-            .backgroundColor('#FFFFFF')
-            .borderRadius(999)
+      Path().commands(this.bannerGrid()).width(this.stageW).height(BANNER_H)
+        .fill(Color.Transparent).stroke(alpha(C.rewardBorder, 0.42)).strokeWidth(0.6)
+        .borderRadius(R.card).clip(true).hitTestBehavior(HitTestMode.None)
+      Row({ space: 8 }) {
+        Column({ space: 3 }) {
+          Text(b.label).fontSize(F.micro).fontWeight(W.bold).fontColor(C.dark ? '#EFCF90' : '#80551C')
+          Text(b.unitTitle).fontSize(F.heading).fontWeight(W.heavy).fontColor(C.dark ? '#FFF1C8' : '#654416')
+            .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
+        }
+        .alignItems(HorizontalAlign.Start)
+        .layoutWeight(1)
+
+        if (this.isUnitLocked(b.unitNumber)) {
+          Text('跳到这里').fontSize(F.micro).fontWeight(W.bold).fontColor(C.dark ? '#FFF1C8' : '#654416')
+            .padding({ left: 9, right: 9 }).height(38)
             .onClick(() => {
               Haptics.tap();
               SFXEngine.shared.play('tap');
               this.onJumpTap(b.unitNumber);
             })
             .accessibilityText(`跳级测试，跳到${b.label}`)
-          } else {
-            Text(b.label).fontSize(F.micro).fontWeight(W.bold).fontColor('#D9FFFFFF').letterSpacing(1.2)
-            Text(b.unitTitle).fontSize(F.subhead).fontWeight(W.bold).fontColor('#FFFFFF').maxLines(1)
-              .textOverflow({ overflow: TextOverflow.Ellipsis })
-          }
         }
-        .alignItems(HorizontalAlign.Start)
-        .layoutWeight(1)
-        .padding({ left: 18, right: 8 })
 
-        Column().width(1).height(BANNER_H - 28).backgroundColor('#40FFFFFF')
-        Stack() {
-          DuoIcon({ name: 'list', sz: 22, color: '#FFFFFF' })
+        Row({ space: 4 }) {
+          DuoIcon({ name: 'book', sz: 16, color: C.dark ? '#FFF1C8' : '#72501F' })
+          Text('知识手册').fontSize(F.micro).fontWeight(W.bold).fontColor(C.dark ? '#FFF1C8' : '#72501F')
         }
-        .width(64)
-        .height(BANNER_H)
+        .padding({ left: 10, right: 10, top: 8, bottom: 8 })
+        .backgroundColor(C.dark ? C.surface : '#FFF7D6')
+        .border({ width: 1, radius: 18, color: C.rewardBorder })
         .onClick(() => {
           Haptics.tap();
           SFXEngine.shared.play('tap');
           this.onGuideTap(b.unitNumber);
         })
-        .accessibilityText(`${b.label}知识手册`)
+        .accessibilityText(`${b.label}知识手册，本单元进度 ${Math.round(this.unitProgress(b.unitNumber) * 100)}%`)
       }
-      .width(STAGE_W - 16)
+      .width(this.stageW)
       .height(BANNER_H)
-      .borderRadius(R.card)
-      .backgroundColor(unitColors(b.unitNumber)[0])
+      .padding({ left: 16, right: 12 })
     }
-    .width(STAGE_W - 16)
-    .height(BANNER_H + 4)
-    .position({ x: 8, y: b.y - BANNER_H / 2 })
+    .width(this.stageW)
+    .height(BANNER_H)
+    .linearGradient({ angle: 110, colors: [[C.rewardSurface, 0], [C.dark ? '#57472D' : '#FFE08B', 1]] })
+    .border({ width: 1, radius: R.card, color: C.rewardBorder })
+    .shadow({ radius: 1, offsetY: 3, color: C.dark ? '#382D1B' : '#DFB653' })
+    .position({ x: 0, y: this.bannerTop(b.firstIndex) })
   }
 
   @Builder
   nodeView(n: PathMapNode, index: number) {
-    Column({ space: 6 }) {
+    Row({ space: 3 }) {
       Stack() {
-        if (n.status === 'current' && n.kind !== 'exam') {
+        if (n.status === 'current') {
           if (!this.lessons.some((x: PathMapNode) => x.status === 'completed')) {
-            Circle()
-              .width(NODE + 8)
-              .height(NODE + 8)
-              .fill(Color.Transparent)
-              .stroke(alpha(C.primary, 0.55 * (1 - this.halo)))
-              .strokeWidth(4)
-              .scale({ x: 1 + 0.55 * this.halo, y: 1 + 0.55 * this.halo })
+            Ellipse().width(NODE_W + 12).height(NODE_H + 15).fill(Color.Transparent)
+              .stroke(alpha(this.topColor(n), 0.55 * (1 - this.halo))).strokeWidth(2)
+              .scale({ x: 1 + 0.3 * this.halo, y: 1 + 0.3 * this.halo })
           }
-          Circle().width(NODE + 18).height(NODE + 18).fill(Color.Transparent).stroke(C.surfaceAlt).strokeWidth(5)
-            .strokeDashArray([3, 6]).strokeLineCap(LineCapStyle.Round)
-          Progress({ value: Math.max(0.1, this.unitProgress(n) * 100), total: 100, type: ProgressType.Ring })
-            .width(NODE + 23)
-            .height(NODE + 23)
-            .color(unitColors(n.unitNumber)[0])
-            .backgroundColor(Color.Transparent)
-            .style({ strokeWidth: 5 })
+          Ellipse().width(NODE_W + 17).height(NODE_H + 20).fill(Color.Transparent)
+            .stroke(alpha(this.topColor(n), 0.8)).strokeWidth(2).strokeDashArray([4, 4])
+            .translate({ y: RIM })
         }
-        Circle().width(NODE).height(NODE).fill(this.ledgeColor(n)).translate({ y: 5 })
+        Ellipse().width(NODE_W + 2).height(NODE_H + 2).fill(this.ledgeColor(n)).opacity(0.42)
+          .translate({ y: 9 })
+        Ellipse().width(NODE_W + 2).height(NODE_H + 2).fill(C.surface).translate({ y: 7 })
+        Ellipse().width(NODE_W).height(NODE_H).fill(this.ledgeColor(n)).translate({ y: RIM })
         Stack() {
-          Circle().width(NODE).height(NODE).fill(this.topColor(n))
-          if (this.nodeIcon(n, index) === 'crown') {
-            Column({ space: 2 }) {
-              DuoIcon({ name: 'crown', sz: 18, color: this.iconColor(n) })
-              Row({ space: 1 }) {
-                ForEach([0, 1, 2], (i: number) => {
-                  DuoIcon({ name: i < n.stars ? 'star' : 'starOutline', sz: 7, color: this.iconColor(n) })
-                }, (i: number) => `${i}`)
-              }
-            }
-          } else {
-            DuoIcon({ name: this.nodeIcon(n, index), sz: n.kind === 'exam' ? 26 : 26, color: this.iconColor(n) })
-          }
+          Ellipse().width(NODE_W).height(NODE_H).fill(this.topColor(n))
+            .stroke(alpha(this.ledgeColor(n), 0.55)).strokeWidth(1.5)
+          Ellipse().width(NODE_W - 5).height(NODE_H - 5).fill(Color.Transparent)
+            .stroke(alpha('#FFFFFF', 0.42)).strokeWidth(1)
+          DuoIcon({ name: this.nodeIcon(n), sz: n.kind === 'exam' ? 20 : 23, color: this.iconColor(n) })
           if ((n.kind === 'chest' && n.chestClaimed) || (n.kind === 'exam' && n.status === 'completed' && !n.conquered)) {
-            DuoIcon({ name: 'checkCircle', sz: 13, color: n.kind === 'chest' ? C.primary : '#FFFFFF' })
-              .translate({ x: 14, y: 14 })
+            DuoIcon({ name: 'checkCircle', sz: 12, color: n.kind === 'chest' ? C.primary : '#FFFFFF' })
+              .translate({ x: 12, y: 8 })
           }
         }
-        .width(NODE)
-        .height(NODE)
-        .translate({ y: this.pressedId === n.id ? 5 : 0 })
+        .width(NODE_W)
+        .height(NODE_H)
+        .translate({ y: this.pressedId === n.id ? RIM : 0 })
 
         if (this.celebrateId === n.id) {
-          Circle().width(NODE + 6).height(NODE + 6).fill(Color.Transparent)
-            .stroke(alpha(C.bee, 0.8 * (1 - this.burst))).strokeWidth(5)
+          Ellipse().width(NODE_W + 6).height(NODE_H + 6).fill(Color.Transparent)
+            .stroke(alpha(C.bee, 0.8 * (1 - this.burst))).strokeWidth(3)
             .scale({ x: 1 + 0.8 * this.burst, y: 1 + 0.8 * this.burst })
           ForEach([0, 1, 2, 3, 4, 5, 6, 7], (i: number) => {
-            DuoIcon({ name: 'star', sz: 11, color: C.bee })
+            DuoIcon({ name: 'star', sz: 10, color: C.bee })
               .opacity(1 - this.burst)
               .translate({
-                x: Math.cos(i / 8 * 2 * Math.PI) * NODE * (0.4 + 0.55 * this.burst),
-                y: Math.sin(i / 8 * 2 * Math.PI) * NODE * (0.4 + 0.55 * this.burst)
+                x: Math.cos(i / 8 * 2 * Math.PI) * NODE_W * (0.4 + 0.55 * this.burst),
+                y: Math.sin(i / 8 * 2 * Math.PI) * NODE_H * (0.4 + 0.55 * this.burst)
               })
           }, (i: number) => `b${i}`)
         }
       }
-      .width(NODE + 24)
-      .height(NODE + 24)
+      .width(NODE_HIT_W)
+      .height(ROW_H)
+      .translate({ y: n.status === 'current' ? this.bob : 0 })
+      .scale({ x: this.celebrateId === n.id ? 1.04 : 1, y: this.celebrateId === n.id ? 1.04 : 1 })
 
-      if (n.status === 'current') {
-        Text(n.kind === 'exam' ? '挑战' : '开始')
-          .fontSize(F.caption)
-          .fontWeight(W.bold)
-          .letterSpacing(0.6)
-          .fontColor(n.kind === 'exam' ? C.beetle : unitColors(n.unitNumber)[0])
-          .padding({ left: 14, right: 14, top: 6, bottom: 6 })
-          .backgroundColor(C.bg)
-          .borderRadius(999)
-          .border({ width: 2, color: C.border, radius: 999 })
-          .margin({ top: -6 })
+      Column({ space: 2 }) {
+        Text(this.nodeCaption(n)).fontSize(F.micro).fontWeight(W.bold).fontColor(C.inkMuted).maxLines(1)
+        Text(n.title).fontSize(n.status === 'current' ? 15 : F.caption).fontWeight(W.bold)
+          .fontColor(n.status === 'locked' ? C.inkMuted : C.ink).maxLines(2)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
       }
+      .alignItems(HorizontalAlign.Start)
+      .layoutWeight(1)
     }
-    .position({ x: this.posX(index) - (NODE + 24) / 2, y: this.posY(index) - (NODE + 24) / 2 })
-    .translate({ x: this.shakeIndex === index ? this.shakeX : 0, y: n.status === 'current' ? this.bob : 0 })
-    .scale({ x: this.celebrateId === n.id ? 1.04 : 1, y: this.celebrateId === n.id ? 1.04 : 1 })
+    .width(this.stageW - this.posX(index) + NODE_HIT_W / 2)
+    .height(ROW_H)
+    .padding({ right: index === 0 ? 78 : 0 })
+    .position({ x: this.posX(index) - NODE_HIT_W / 2, y: this.posY(index) - ROW_H / 2 })
+    .translate({ x: this.shakeIndex === index ? this.shakeX : 0 })
     .onTouch((e: TouchEvent) => {
       if (e.type === TouchType.Down) {
         this.pressedId = n.id;
@@ -507,8 +529,8 @@ export struct PathMap {
       }
     })
     .onClick(() => this.tapNode(n, index))
-    .accessibilityText(n.kind === 'chest' ? `宝箱, ${n.status === 'locked' ? '未解锁' : (n.chestClaimed ? '已领取' : '可领取')}` :
-      `${n.title}, ${n.status === 'completed' ? '已完成' : (n.status === 'current' ? '当前' : '未解锁')}`)
+    .accessibilityGroup(true)
+    .accessibilityText(`${this.nodeCaption(n)}，${n.title}` + (n.kind === 'lesson' && n.status === 'completed' ? `，${n.stars} 星` : ''))
   }
 
   @Builder
@@ -517,6 +539,8 @@ export struct PathMap {
       Polygon({ width: 22, height: 11 })
         .points([[11, 0], [22, 11], [0, 11]])
         .fill(this.popupAccent(index))
+        .alignSelf(ItemAlign.Start)
+        .margin({ left: Math.max(0, this.posX(index) - 23) })
       Column({ space: 12 }) {
         Text(this.lessons[index].kind === 'exam' ? `⚔️ ${this.lessons[index].title}` : this.lessons[index].title)
           .fontSize(F.subhead).fontWeight(W.bold).fontColor('#FFFFFF').maxLines(2)
@@ -541,11 +565,11 @@ export struct PathMap {
       }
       .alignItems(HorizontalAlign.Start)
       .padding(16)
-      .width(STAGE_W - 48)
+      .width(this.stageW - 24)
       .backgroundColor(this.popupAccent(index))
       .borderRadius(R.large)
     }
-    .position({ x: 24, y: this.popupTop(index) })
+    .position({ x: 12, y: this.popupTop(index) })
     .zIndex(10)
     .onAreaChange((_o: Area, a: Area) => {
       const h = Number(a.height);
@@ -568,8 +592,8 @@ export struct PathMap {
       return `${n.questionCount} 道题 · ⚔️ 挑战双倍 XP · 最多 +${this.maxXp(n)} XP`;
     }
     const unitNodes = this.lessons.filter((x: PathMapNode) => x.kind === 'lesson' && x.unitNumber === n.unitNumber);
-    const no = unitNodes.findIndex((x: PathMapNode) => x.id === n.id) + 1;
-    return `第 ${no} / ${unitNodes.length} 节` + (n.questionCount > 0 ? ` · 最多 +${this.maxXp(n)} XP` : '');
+    return `第 ${n.lessonNumber} / ${unitNodes.length} 节` + (n.stars > 0 ? ` · 已获 ${n.stars} 星` : '') +
+      (n.questionCount > 0 ? ` · 最多 +${this.maxXp(n)} XP` : '');
   }
 
   private popupButton(index: number): string {
@@ -585,14 +609,14 @@ export struct PathMap {
     if (top <= BANNER_H + 24) {
       return null;
     }
-    const idx = this.lessons.findIndex((_n: PathMapNode, i: number) => this.posY(i) + NODE / 2 >= top);
+    const idx = this.lessons.findIndex((_n: PathMapNode, i: number) => this.posY(i) + ROW_H / 2 >= top);
     return idx >= 0 ? this.lessons[idx] : null;
   }
 
   private currentViewportY(): number | null {
     const id = this.currentMainlineId();
     const idx = this.lessons.findIndex((n: PathMapNode) => n.id === id);
-    return idx < 0 ? null : this.posY(idx) + 20 - this.scrollY;
+    return idx < 0 ? null : this.posY(idx) - this.scrollY;
   }
 
   build() {
@@ -600,23 +624,36 @@ export struct PathMap {
       Scroll(this.scroller) {
         Column() {
           Stack({ alignContent: Alignment.TopStart }) {
-            if (this.lessons.length >= 4) {
-              Row({ space: 4 }) {
-                DuoIcon({ name: 'star', sz: 14, color: C.surfaceAlt })
-                DuoIcon({ name: 'star', sz: 16, color: C.surfaceAlt })
-                DuoIcon({ name: 'star', sz: 14, color: C.surfaceAlt })
+            ForEach(this.lessons, (n: PathMapNode, i: number) => {
+              if (i + 1 < this.lessons.length && this.lessons[i + 1].unitNumber === n.unitNumber) {
+                Path().commands(this.connector(i)).width(this.stageW).height(this.posY(i + 1) - this.posY(i))
+                  .fill(Color.Transparent).stroke(C.dark ? '#54684C' : '#CBDDBA').strokeWidth(4.5)
+                  .strokeDashArray([0.1, 9]).strokeLineCap(LineCapStyle.Round)
+                  .position({ x: 0, y: this.posY(i) }).hitTestBehavior(HitTestMode.None)
               }
-              .position({ x: STAGE_W - 70, y: this.posY(3) - 4 })
+            }, (n: PathMapNode, i: number) => `link-${n.id}-${i}`)
+            if (this.lessons.length > 0) {
+              Stack() {
+                if (ProgressStore.shared.equippedMascotSkin === Cosmetics.defaultSkin) {
+                  Image($r('app.media.learning_hero')).width(74).height(74).objectFit(ImageFit.Contain)
+                } else {
+                  Mascot({ mood: 'happy', sz: 74, still: true })
+                }
+              }
+              .width(74).height(74)
+              .position({ x: this.stageW - 74, y: BANNER_H + 5 })
+              .hitTestBehavior(HitTestMode.None)
+              .accessibilityLevel('no-hide-descendants')
             }
-            ForEach(this.banners(), (b: Banner) => {
+            ForEach(this.banners, (b: Banner) => {
               this.bannerView(b)
             }, (b: Banner) => `banner-${b.unitNumber}-${this.bookKey}-${this.isUnitLocked(b.unitNumber)}`)
             ForEach(this.lessons, (n: PathMapNode, i: number) => {
               this.nodeView(n, i)
-            }, (n: PathMapNode, i: number) => `${n.id}-${n.status}-${n.stars}-${n.chestClaimed}-${i}`)
+            }, (n: PathMapNode, i: number) => `${n.id}-${n.status}-${n.stars}-${n.chestClaimed}-${n.conquered}-${i}`)
             if (this.selected >= 0 && this.selected < this.lessons.length) {
               Column()
-                .width(STAGE_W)
+                .width(this.stageW)
                 .height(this.stageHeight())
                 .backgroundColor('#01000000')
                 .onClick(() => {
@@ -625,11 +662,11 @@ export struct PathMap {
               this.startPopup(this.selected)
             }
           }
-          .width(STAGE_W)
+          .width(this.stageW)
           .height(this.stageHeight())
         }
         .width('100%')
-        .padding({ top: 20, bottom: 20 })
+        .padding({ top: MAP_PADDING, bottom: MAP_PADDING })
       }
       .width('100%')
       .height('100%')
@@ -637,25 +674,26 @@ export struct PathMap {
       .edgeEffect(EdgeEffect.Spring)
       .backgroundColor(C.bg)
       .onDidScroll(() => {
-        this.scrollY = this.scroller.currentOffset().yOffset - 20;
+        this.scrollY = this.scroller.currentOffset().yOffset - MAP_PADDING;
       })
       .onAreaChange((_o: Area, n: Area) => {
         this.viewportH = Number(n.height);
+        this.stageW = Math.max(1, Math.min(540, Number(n.width) - 32));
       })
       .onAppear(() => this.scrollToCurrent(false))
 
       if (this.stickyNode() !== null) {
         Row({ space: 10 }) {
           Column({ space: 1 }) {
-            Text((this.stickyNode() as PathMapNode).displayLabel).fontSize(F.micro).fontWeight(W.bold).fontColor('#D9FFFFFF')
-            Text((this.stickyNode() as PathMapNode).unitTitle).fontSize(F.caption).fontWeight(W.bold).fontColor('#FFFFFF')
+            Text((this.stickyNode() as PathMapNode).displayLabel).fontSize(F.micro).fontWeight(W.bold).fontColor(C.dark ? '#EFCF90' : '#80551C')
+            Text((this.stickyNode() as PathMapNode).unitTitle).fontSize(F.caption).fontWeight(W.bold).fontColor(C.dark ? '#FFF1C8' : '#654416')
               .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
           }
           .alignItems(HorizontalAlign.Start)
           .layoutWeight(1)
 
           Stack() {
-            DuoIcon({ name: 'list', sz: 16, color: '#FFFFFF' })
+            DuoIcon({ name: 'book', sz: 16, color: C.dark ? '#FFF1C8' : '#654416' })
           }
           .width(36)
           .height(32)
@@ -666,7 +704,7 @@ export struct PathMap {
         }
         .padding({ left: 14, right: 14, top: 8, bottom: 8 })
         .margin({ left: 16, right: 16, top: 6 })
-        .backgroundColor(unitColors((this.stickyNode() as PathMapNode).unitNumber)[0])
+        .backgroundColor(C.rewardSurface)
         .borderRadius(R.card)
         .shadow({ radius: 6, color: '#1F000000', offsetY: 3 })
         .transition(TransitionEffect.OPACITY)

@@ -5,6 +5,7 @@ import { Chest, pathLessonMetas, priorLessonMetas } from '../domain/Catalog';
 import { Jump, JumpQuestionSource, JumpSampledQuestion } from '../domain/Seeded';
 import { Book, KnowledgePoint, Outline, PathLessonMeta, Question, SubjectId, Unit } from '../models/Types';
 import { ProgressStore } from '../stores/ProgressStore';
+import { SettingsStore } from '../stores/SettingsStore';
 import { DataLoader } from '../services/DataLoader';
 import { Files } from '../services/Files';
 import { AssetDownloader } from '../services/AssetDownloader';
@@ -13,12 +14,10 @@ import { Haptics } from '../services/Feedback';
 import { CardBox, ChunkyButton, DuoIcon, IconBadge, Pill, ProgressBar, TitleBar } from '../components/Kit';
 import { Mascot } from '../components/Mascot';
 import { ChestModal } from '../components/Effects';
-import {
-  BottomTabBar, BookDownloadCard, DailyGoalRing, DailyQuestsCard, StreakCalendar, weekCalendar
-} from '../components/Widgets';
+import { BookDownloadCard, DailyGoalRing } from '../components/Widgets';
 import { buildPathNodes, PathMap, PathMapNode } from '../components/PathMap';
 import { AppRoute, RouteName, Router } from './Router';
-import { QuestionPhase, QuestionRenderer } from './Questions';
+import { QuestionPhase, QuestionRenderer, stemFontSize } from './Questions';
 import { gradeAnswer } from '../domain/Grade';
 import { renderMathText } from '../domain/MathText';
 
@@ -88,11 +87,19 @@ export struct LearnHome {
   @Local mHearts: number = 0;
   @Local mDone: number = 0;
   @Local mRev: number = 0;
+  @Local mKids: boolean = SettingsStore.shared.kidsMode;
+  @Local mCards: number = 0;
+  @Local mDemons: number = 0;
+  private unsubSettings: () => void = () => {
+  };
 
   private rebuild(): void {
     this.mStreak = this.store.displayStreak;
     this.mGems = this.store.gems;
     this.mHearts = this.store.hearts;
+    this.mKids = SettingsStore.shared.kidsMode;
+    this.mCards = this.store.knowledgeCardCount;
+    this.mDemons = this.store.pendingDemonCount;
     this.mDone = this.store.totalCompletedLessons;
     this.mRev++;
     const b = activeBook(this.store);
@@ -116,11 +123,15 @@ export struct LearnHome {
 
   aboutToDisappear(): void {
     this.unsubStore();
+    this.unsubSettings();
   }
 
   aboutToAppear(): void {
     this.unsubStore = this.store.onChange(() => {
       this.rebuild();
+    });
+    this.unsubSettings = SettingsStore.shared.onChange(() => {
+      this.mKids = SettingsStore.shared.kidsMode;
     });
     this.rebuild();
   }
@@ -131,34 +142,64 @@ export struct LearnHome {
   }
 
   @Builder
+  resourceBadge(icon: string, label: string, tint: string) {
+    Row({ space: 4 }) {
+      DuoIcon({ name: icon, sz: 16, color: tint })
+      Text(label).fontSize(F.caption).fontWeight(W.heavy).fontColor(C.ink)
+    }
+    .padding({ left: 7, right: 7, top: 5, bottom: 5 })
+    .backgroundColor(C.surface)
+    .borderRadius(10)
+    .shadow({ radius: 1, color: alpha(C.primaryDark, 0.32), offsetY: 2 })
+  }
+
+  @Builder
   topBar() {
-    Row({ space: 8 }) {
-      Stack() {
-        DuoIcon({ name: 'flame', sz: 24, color: this.mStreak > 0 ? C.fox : C.inkSofter })
-        Text(`${this.mStreak}`).fontSize(F.micro).fontWeight(W.heavy).fontColor('#FFFFFF').translate({ y: 4 })
+    Row({ space: 6 }) {
+      Scroll() {
+        Row({ space: 6 }) {
+          this.resourceBadge('flame', `${this.mStreak} 天`, this.mStreak > 0 ? C.fox : C.inkSofter)
+          this.resourceBadge('gem', `${this.mGems}`, C.beetle)
+          if (this.mKids) {
+            Row() {
+              this.resourceBadge('books', `${this.mCards}`, C.secondary)
+            }
+            .onClick(() => {
+              Haptics.tap();
+              Router.shared.push(new AppRoute('cards'));
+            })
+            .accessibilityText(`知识卡册，已收集 ${this.mCards} 张`)
+            if (this.mDemons > 0) {
+              Row() {
+                this.resourceBadge('lock', `${this.mDemons}`, C.fox)
+              }
+              .onClick(() => {
+                const first = this.store.sealedChests[0];
+                if (first !== undefined) {
+                  Haptics.tap();
+                  Router.shared.push(AppRoute.remedy(first.id));
+                }
+              })
+              .accessibilityText(`${this.mDemons} 只心魔待收服`)
+            }
+          } else {
+            this.resourceBadge('heart', `${this.mHearts}`, this.mHearts > 0 ? C.danger : C.inkSofter)
+          }
+        }
+        .padding({ bottom: 3 })
       }
-      .width(30)
-      .height(30)
-
-      Row({ space: 4 }) {
-        DuoIcon({ name: 'gem', sz: 17, color: C.beetle })
-        Text(`${this.mGems}`).fontSize(F.body).fontWeight(W.heavy).fontColor(C.beetle)
-      }
-
-      Row({ space: 4 }) {
-        DuoIcon({ name: 'heart', sz: 17, color: this.mHearts > 0 ? C.danger : C.inkSofter })
-        Text(`${this.mHearts}`).fontSize(F.body).fontWeight(W.heavy)
-          .fontColor(this.mHearts > 0 ? C.danger : C.inkSofter)
-      }
-
-      Blank()
+      .layoutWeight(1)
+      .height(38)
+      .scrollable(ScrollDirection.Horizontal)
+      .scrollBar(BarState.Off)
+      .align(Alignment.Start)
       ForEach([this.mRev], (r: number) => {
-        DailyGoalRing({ sz: 44 })
+        DailyGoalRing({ sz: 30, captionMode: 'compact' })
       }, (r: number) => `${r}`)
     }
     .width('100%')
-    .padding({ left: 16, right: 16, top: 8, bottom: 6 })
-    .backgroundColor(C.bg)
+    .padding({ left: 16, right: 16, top: 6, bottom: 6 })
+    .backgroundColor(C.studyHeader)
   }
 
   @Builder
@@ -166,7 +207,7 @@ export struct LearnHome {
     if (this.book !== null) {
       Row({ space: 10 }) {
         Row({ space: 10 }) {
-          IconBadge(subjectIcon(this.book?.subject), subjectColor(this.book?.subject), 44, 22)
+          IconBadge('book', subjectColor(this.book?.subject), 38, 20)
           Column({ space: 1 }) {
             Text(this.book?.fullName ?? '').fontSize(F.caption).fontWeight(W.bold).fontColor(C.ink).maxLines(1)
               .textOverflow({ overflow: TextOverflow.Ellipsis })
@@ -179,9 +220,9 @@ export struct LearnHome {
           Router.shared.push(AppRoute.book('bookDetail', this.book?.id ?? ''));
         })
 
-        Text('换课本').fontSize(F.caption).fontWeight(W.bold).fontColor(C.secondary)
+        Text('换课本').fontSize(F.caption).fontWeight(W.bold).fontColor(C.dark ? C.primary : C.ink)
           .padding({ left: 12, right: 12, top: 8, bottom: 8 })
-          .backgroundColor(alpha(C.secondary, 0.12))
+          .backgroundColor(alpha(C.primary, 0.14))
           .borderRadius(999)
           .onClick(() => {
             this.showSwitch = true;
@@ -193,7 +234,8 @@ export struct LearnHome {
           })
       }
       .width('100%')
-      .padding({ left: 16, right: 16, bottom: 8 })
+      .padding({ left: 16, right: 16, top: 10, bottom: 10 })
+      .border({ width: { bottom: 1 }, color: C.border })
     }
   }
 
@@ -246,9 +288,6 @@ export struct LearnHome {
           }
         }).layoutWeight(1)
       }
-      ForEach([this.mRev], (r: number) => {
-        DailyQuestsCard().margin({ left: 16, right: 16, bottom: 8 })
-      }, (r: number) => `${r}`)
     }
       .width('100%')
       .height('100%')
@@ -662,8 +701,8 @@ export struct JumpTestPage {
         this.marked = this.store.applyJumpUnlock(this.priorIds);
         Haptics.success();
         SFXEngine.shared.play('complete');
-      } else {
-        // 失败扣 1 颗心，可以换套题再试。
+      } else if (!SettingsStore.shared.kidsMode) {
+        // 失败扣 1 颗心，可以换套题再试（儿童模式不扣）。
         this.store.loseHeart();
         SFXEngine.shared.play('heartLoss');
         Haptics.heartLoss();
@@ -702,8 +741,10 @@ export struct JumpTestPage {
           if (this.passed) {
             ChunkyButton({ label: '好的', onTap: () => Router.shared.clear() }).width(220)
           } else {
-            Text(`已扣 1 颗心 · 剩余 ${this.heartsLeft}`).fontSize(F.caption).fontWeight(W.bold).fontColor(C.danger)
-            if (this.heartsLeft > 0) {
+            if (!SettingsStore.shared.kidsMode) {
+              Text(`已扣 1 颗心 · 剩余 ${this.heartsLeft}`).fontSize(F.caption).fontWeight(W.bold).fontColor(C.danger)
+            }
+            if (SettingsStore.shared.kidsMode || this.heartsLeft > 0) {
               ChunkyButton({ label: '换一套题再试', onTap: () => {
                 Haptics.tap();
                 this.retry();
@@ -755,8 +796,8 @@ export struct JumpTestPage {
 
       Scroll() {
         Column({ space: S.xl }) {
-          Text(renderMathText(q.question)).fontSize(F.subhead).fontWeight(W.medium).fontColor(C.ink).lineHeight(26)
-            .width('100%')
+          Text(renderMathText(q.question)).fontSize(stemFontSize(q.question)).fontWeight(W.bold).fontColor(C.ink)
+            .lineHeight(stemFontSize(q.question) * 1.4).width('100%')
           QuestionRenderer({
             question: q, answer: this.answer, phase: this.phase, isCorrect: this.isCorrect,
             qKey: `j${this.attempt}-${this.index}`, onAnswer: (a: string) => {

@@ -13,6 +13,8 @@ import { ChunkyButton, DuoIcon } from '../components/Kit';
 import { Mascot } from '../components/Mascot';
 import { Confetti, StarReveal } from '../components/Effects';
 import { BadgeData, ShareCardButton } from '../components/ShareCard';
+import { CardTier, Remedy } from '../domain/KidsMode';
+import { CardReveal } from './Cards';
 import { AppRoute, Router } from './Router';
 
 @ComponentV2
@@ -66,6 +68,38 @@ export struct LessonResultPage {
     .layoutWeight(1)
   }
 
+  /** 儿童模式：宝箱封存提示 + 去收服心魔。 */
+  @Builder
+  sealedBox() {
+    Column({ space: 12 }) {
+      Row({ space: 10 }) {
+        DuoIcon({ name: 'chest', sz: 34, color: C.inkSofter })
+        Column({ space: 2 }) {
+          Text('宝箱被心魔封住了').fontSize(F.subhead).fontWeight(W.heavy).fontColor(C.ink)
+          Text(`👾 ${this.result?.outcome.demonCount ?? 0} 只心魔待收服`).fontSize(F.caption).fontWeight(W.bold)
+            .fontColor(C.fox)
+        }
+        .alignItems(HorizontalAlign.Start)
+        .layoutWeight(1)
+      }
+      .width('100%')
+
+      Text(`收服后返还 ${this.result?.outcome.sealedGems ?? 0} 宝石` +
+        `${(this.result?.outcome.cardTier ?? 0) > 0 ? ` + ${CardTier.label(this.result?.outcome.cardTier ?? 1)}「${this.result?.lessonTitle ?? ''}」` : ''}` +
+        `，每只心魔再奖 ${Remedy.bonusGemsPerDemon} 宝石。经验已经到账啦！`)
+        .fontSize(F.caption).fontColor(C.inkMuted).lineHeight(19)
+      ChunkyButton({ label: '去收服心魔', variant: 'secondary', icon: 'sparkles', onTap: () => {
+        Haptics.tap();
+        Router.shared.replaceTop(AppRoute.remedy(this.result?.outcome.sealedChestId ?? ''));
+      } })
+    }
+    .padding(16)
+    .margin({ left: 20, right: 20 })
+    .backgroundColor(alpha(C.fox, 0.08))
+    .borderRadius(R.card)
+    .border({ width: 2, color: alpha(C.fox, 0.35), radius: R.card })
+  }
+
   build() {
     Stack() {
       Column({ space: 0 }) {
@@ -86,6 +120,30 @@ export struct LessonResultPage {
               this.stat('flame', C.fox, `${this.result?.outcome.streakAfter ?? 0}`, '连胜')
             }
             .padding({ left: 20, right: 20 })
+
+            if ((this.result?.outcome.sealedChestId ?? '').length > 0) {
+              this.sealedBox()
+            } else if ((this.result?.outcome.cardNew ?? false) || (this.result?.outcome.cardUpgraded ?? false)) {
+              Column({ space: 8 }) {
+                Text(this.result?.outcome.cardNew ? '获得知识卡！' : '知识卡升级！').fontSize(F.subhead).fontWeight(W.heavy)
+                  .fontColor(C.ink)
+                CardReveal({
+                  title: this.result?.lessonTitle ?? '', caption: '已收进知识卡册',
+                  tier: this.result?.outcome.cardTier ?? 1, badge: this.result?.outcome.cardNew ? 'NEW' : '升级'
+                })
+              }
+            } else if ((this.result?.outcome.cardTier ?? 0) > 0) {
+              Text(`这张知识卡已收藏（${CardTier.label(this.store.cardTier(this.result?.lessonId ?? ''))}）`)
+                .fontSize(F.caption).fontWeight(W.bold).fontColor(C.inkMuted)
+            }
+
+            if ((this.result?.outcome.bonusXp ?? 0) > 0) {
+              Text(`⚡ 神速挑战成功 · 额外 +${this.result?.outcome.bonusXp} XP`)
+                .fontSize(F.caption).fontWeight(W.heavy).fontColor(C.fox)
+                .padding({ left: 14, right: 14, top: 6, bottom: 6 })
+                .backgroundColor(alpha(C.fox, 0.14))
+                .borderRadius(999)
+            }
 
             if ((this.result?.outcome.weekendDoubled ?? false) || (this.result?.outcome.examDoubled ?? false)) {
               Text(this.result?.outcome.examDoubled ? '⚔️ 单元挑战 · 双倍 XP 生效' : '⚡ 周末双倍 XP 生效')

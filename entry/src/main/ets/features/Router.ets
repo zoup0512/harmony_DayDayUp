@@ -3,7 +3,7 @@ import { LessonRunResult } from '../models/Types';
 
 export type RouteName = 'bookList' | 'bookDetail' | 'lesson' | 'lessonResult' | 'review' | 'reviewRunner' |
   'achievements' | 'stories' | 'storyReader' | 'reading' | 'passageReader' | 'shop' | 'profile' | 'settings' |
-  'guide' | 'jumpTest';
+  'guide' | 'jumpTest' | 'remedy' | 'cards';
 
 export class AppRoute {
   name: RouteName;
@@ -45,6 +45,13 @@ export class AppRoute {
     return r;
   }
 
+  /** 心魔试炼（itemId = 封存宝箱 id）。 */
+  static remedy(chestId: string): AppRoute {
+    const r = new AppRoute('remedy');
+    r.itemId = chestId;
+    return r;
+  }
+
   static resultOf(result: LessonRunResult): AppRoute {
     const r = new AppRoute('lessonResult');
     r.result = result;
@@ -61,6 +68,7 @@ export class AppRoute {
       case 'reading':
       case 'guide':
       case 'jumpTest':
+      case 'remedy':
         return true;
       default:
         return false;

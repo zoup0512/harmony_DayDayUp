@@ -7,8 +7,10 @@ import { CosmeticItem, Cosmetics, rarityColor, rarityLabel } from '../domain/Cat
 import { League, LeagueBot, StandingEntry } from '../domain/Seeded';
 import { gradeAnswer, instructionText } from '../domain/Grade';
 import { renderMathText } from '../domain/MathText';
-import { MistakeEntry, Question } from '../models/Types';
+import { DemonState, MistakeEntry, Question, SealedChest } from '../models/Types';
+import { CardTier, Remedy } from '../domain/KidsMode';
 import { ProgressStore } from '../stores/ProgressStore';
+import { SettingsStore } from '../stores/SettingsStore';
 import { DataLoader } from '../services/DataLoader';
 import { AudioPlayer, SFXEngine } from '../services/Audio';
 import { Haptics } from '../services/Feedback';
@@ -16,7 +18,7 @@ import { CardBox, ChunkyButton, DuoIcon, IconBadge, ModalCard, Pill, ProgressBar
 import { Mascot } from '../components/Mascot';
 import { Confetti } from '../components/Effects';
 import { AppRoute, Router } from './Router';
-import { QuestionPhase, QuestionRenderer } from './Questions';
+import { QuestionPhase, QuestionRenderer, stemFontSize } from './Questions';
 
 /** 错题本 Tab。 */
 @ComponentV2
@@ -53,29 +55,71 @@ export struct ReviewTab {
   }
 
   @Builder
-  entryRow(e: MistakeEntry) {
-    Row({ space: 12 }) {
-      IconBadge('book', SRS.isGraduated(e) ? C.primary : C.fox, 42, 18)
-      Column({ space: 3 }) {
-        Text(renderMathText(e.question.question)).fontSize(F.caption).fontWeight(W.bold).fontColor(C.ink)
-          .maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
-        Row({ space: 6 }) {
-          Text(this.lessonTitleOf(e)).fontSize(F.micro).fontWeight(W.bold).fontColor(C.inkMuted).maxLines(1)
-          if (SRS.isGraduated(e)) {
-            Pill('已掌握', '#FFFFFF', C.primary)
-          } else {
-            Pill(`第 ${e.box ?? 1} 层`, C.fox, alpha(C.fox, 0.12))
+  chestRow(c: SealedChest) {
+    Column({ space: 10 }) {
+      Row({ space: 10 }) {
+        Column({ space: 5 }) {
+          Pill('封存宝箱', C.ink, alpha(C.bee, 0.28))
+          Text(`${c.demons.filter((d: DemonState) => !Remedy.isSubdued(d)).length} 只心魔待收服`)
+            .fontSize(F.heading).fontWeight(W.heavy).fontColor(C.ink)
+          Text(c.lessonTitle).fontSize(F.caption).fontColor(C.inkMuted)
+            .maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
+        }
+        .alignItems(HorizontalAlign.Start)
+        .layoutWeight(1)
+        Image($r('app.media.learning_chest')).width(94).height(84).objectFit(ImageFit.Contain)
+          .accessibilityLevel('no')
+      }
+      .width('100%')
+      Divider().color(C.rewardBorder)
+      Row({ space: 8 }) {
+        Column({ space: 3 }) {
+          Row({ space: 4 }) {
+            DuoIcon({ name: 'gem', sz: 15, color: C.beetle })
+            Text(`${c.gems} 宝石` + (c.cardTier > 0 ? ` · 1 张${CardTier.label(c.cardTier)}` : ''))
+              .fontSize(F.caption).fontWeight(W.bold).fontColor(C.ink)
           }
+          Text(`保留到 ${c.expiresOn.substring(5)}`).fontSize(F.micro).fontColor(C.inkMuted)
+        }
+        .alignItems(HorizontalAlign.Start)
+        .layoutWeight(1)
+        SmallChunkyButton({ label: '去收服', bgColor: C.primary, shadowColor: C.primaryDark, onTap: () => {
+          Haptics.tap();
+          Router.shared.push(AppRoute.remedy(c.id));
+        } }).width(80)
+      }
+      .width('100%')
+    }
+    .padding(14)
+    .width('100%')
+    .backgroundColor(C.rewardSurface)
+    .borderRadius(R.card)
+    .border({ width: 1.5, color: C.rewardBorder, radius: R.card })
+  }
+
+  @Builder
+  entryRow(e: MistakeEntry) {
+    Column({ space: 8 }) {
+      Row({ space: 6 }) {
+        DuoIcon({ name: 'book', sz: 15, color: C.inkMuted })
+        Text(this.lessonTitleOf(e)).fontSize(F.micro).fontWeight(W.bold).fontColor(C.inkMuted)
+          .layoutWeight(1).maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
+        if (SRS.isGraduated(e)) {
+          Pill('已掌握', C.ink, alpha(C.primary, 0.18))
+        } else {
+          Pill(`第 ${e.box ?? 1} 层`, C.ink, alpha(C.fox, 0.15))
         }
       }
-      .alignItems(HorizontalAlign.Start)
-      .layoutWeight(1)
+      .width('100%')
+      Text(renderMathText(e.question.question)).fontSize(F.body).fontWeight(W.bold).fontColor(C.ink)
+        .maxLines(3).textOverflow({ overflow: TextOverflow.Ellipsis })
     }
+    .alignItems(HorizontalAlign.Start)
     .padding(14)
     .width('100%')
     .backgroundColor(C.surface)
     .borderRadius(R.card)
-    .border({ width: 2, color: C.border, radius: R.card })
+    .border({ width: 1, color: C.border, radius: R.card })
   }
 
   build() {
@@ -85,23 +129,31 @@ export struct ReviewTab {
       Row({ space: 10 }) {
         Text('错题本').fontSize(F.title).fontWeight(W.heavy).fontColor(C.ink).layoutWeight(1)
         if (this.store.dueMistakes.length > 0) {
-          Pill(`待复习 ${this.store.dueMistakes.length}`, '#FFFFFF', C.fox)
+          Pill(`待复习 ${this.store.dueMistakes.length}`, C.ink, C.surface)
         }
       }
-      .padding({ left: 18, right: 18, top: 14, bottom: 10 })
+      .width('100%')
+      .padding({ left: 18, right: 18, top: 9, bottom: 13 })
+      .backgroundColor(C.studyHeader)
 
       Scroll() {
         Column({ space: 12 }) {
-          if (this.store.progress.mistakesBank.length === 0) {
+          if (this.store.sealedChests.length > 0) {
+            Text('心魔录').fontSize(F.subhead).fontWeight(W.heavy).fontColor(C.ink).width('100%')
+            ForEach(this.store.sealedChests, (c: SealedChest) => {
+              this.chestRow(c)
+            }, (c: SealedChest) => `${c.id}-${c.demons.filter((d: DemonState) => Remedy.isSubdued(d)).length}`)
+          }
+          if (this.store.progress.mistakesBank.length === 0 && this.store.sealedChests.length === 0) {
             Column({ space: 14 }) {
-              Mascot({ mood: 'cheer', sz: 120 })
+              Mascot({ mood: 'cheer', sz: 150, illustrated: true })
               Text('还没有错题，太棒了！').fontSize(F.heading).fontWeight(W.heavy).fontColor(C.ink)
               Text('做错的题会自动收集到这里复习').fontSize(F.caption).fontColor(C.inkMuted)
             }
             .margin({ top: 80 })
-          } else {
+          } else if (this.store.progress.mistakesBank.length > 0) {
             if (this.store.dueMistakes.length > 0) {
-              Text('今天到期').fontSize(F.caption).fontWeight(W.bold).fontColor(C.inkMuted).width('100%')
+              Text('今天到期').fontSize(F.subhead).fontWeight(W.heavy).fontColor(C.ink).width('100%')
               ForEach(this.store.dueMistakes, (e: MistakeEntry) => {
                 this.entryRow(e)
               }, (e: MistakeEntry) => `${e.lessonId}-${e.question.id}-${e.nextReviewDate}`)
@@ -121,7 +173,8 @@ export struct ReviewTab {
           }
           Blank().height(30)
         }
-        .padding({ left: 16, right: 16 })
+        .width('100%')
+        .padding({ left: 18, right: 18, top: 16 })
         .alignItems(HorizontalAlign.Start)
       }
       .layoutWeight(1)
@@ -129,7 +182,8 @@ export struct ReviewTab {
 
       if (this.store.dueMistakes.length > 0) {
         ChunkyButton({
-          label: `开始复习（${this.store.dueMistakes.length} 题 · 答对 ${Economy.reviewHeartMinCorrect} 题 +1 ❤️）`,
+          label: SettingsStore.shared.kidsMode ? `开始复习（${this.store.dueMistakes.length} 题）` :
+            `开始复习（${this.store.dueMistakes.length} 题 · 答对 ${Economy.reviewHeartMinCorrect} 题 +1 ❤️）`,
           onTap: () => {
             Haptics.tap();
             Router.shared.push(new AppRoute('reviewRunner'));
@@ -160,9 +214,33 @@ export struct ReviewRunner {
   @Local done: boolean = false;
   @Local earnedHeart: boolean = false;
   @Local sweep: number = 0;
+  private autoTimer: number = -1;
 
   aboutToAppear(): void {
     this.queue = this.store.dueMistakes.slice(0, 15);
+  }
+
+  aboutToDisappear(): void {
+    this.cancelAutoAdvance();
+  }
+
+  /** 与课程页一致：答对后约 1.2s 自动下一题，「继续」可提前跳。 */
+  private scheduleAutoAdvance(): void {
+    this.cancelAutoAdvance();
+    const idx = this.index;
+    this.autoTimer = setTimeout(() => {
+      this.autoTimer = -1;
+      if (this.index === idx && this.phase === 'checked' && this.isCorrect && !this.done) {
+        this.next();
+      }
+    }, 1200);
+  }
+
+  private cancelAutoAdvance(): void {
+    if (this.autoTimer !== -1) {
+      clearTimeout(this.autoTimer);
+      this.autoTimer = -1;
+    }
   }
 
   private current(): MistakeEntry | undefined {
@@ -170,6 +248,7 @@ export struct ReviewRunner {
   }
 
   private next(): void {
+    this.cancelAutoAdvance();
     if (this.index + 1 >= this.queue.length) {
       const total = this.correct;
       this.store.awardReviewXP(total * Economy.xpPerCorrect, this.queue.length);
@@ -241,9 +320,12 @@ export struct ReviewRunner {
     Column() {
       Scroll() {
         Column({ space: S.xl }) {
-          Text(instructionText(e.question.type)).fontSize(F.heading).fontWeight(W.heavy).fontColor(C.ink).width('100%')
-          Text(renderMathText(e.question.question)).fontSize(F.subhead).fontWeight(W.medium).fontColor(C.inkMuted)
-            .lineHeight(26).width('100%')
+          Column({ space: S.m }) {
+            Text(instructionText(e.question.type)).fontSize(F.subhead).fontWeight(W.bold).fontColor(C.inkMuted)
+              .width('100%')
+            Text(renderMathText(e.question.question)).fontSize(stemFontSize(e.question.question)).fontWeight(W.bold)
+              .fontColor(C.ink).lineHeight(stemFontSize(e.question.question) * 1.4).width('100%')
+          }
           QuestionRenderer({
             question: e.question, answer: this.answer, phase: this.phase, isCorrect: this.isCorrect,
             qKey: `r-${e.lessonId}-${e.question.id}-${this.index}`, onAnswer: (a: string) => {
@@ -286,6 +368,7 @@ export struct ReviewRunner {
               SFXEngine.shared.play('correct', 0);
               Haptics.correct();
               this.store.reviewMistake(e.lessonId, e.question.id, true);
+              this.scheduleAutoAdvance();
             } else {
               SFXEngine.shared.play('wrong');
               Haptics.wrong();
@@ -372,7 +455,10 @@ export struct LeagueTab {
       ForEach([this.rev], (r: number) => {
       Column() {
       Row({ space: 10 }) {
-        DuoIcon({ name: 'trophy', sz: 26, color: C.bee })
+        Stack() {
+          DuoIcon({ name: 'trophy', sz: 26, color: C.fox })
+        }
+        .width(42).height(44).borderRadius(R.control).backgroundColor(alpha(C.bee, 0.25))
         Column({ space: 1 }) {
           Text(League.tier(this.store.leagueTierId).name).fontSize(F.subhead).fontWeight(W.heavy).fontColor(C.ink)
           Text('每周一结算 · 前 5 名晋级').fontSize(F.micro).fontWeight(W.bold).fontColor(C.inkMuted)
@@ -385,15 +471,22 @@ export struct LeagueTab {
           Text('本周 XP').fontSize(F.micro).fontWeight(W.bold).fontColor(C.inkMuted)
         }
       }
-      .padding({ left: 18, right: 18, top: 14, bottom: 10 })
+      .padding(14)
+      .backgroundColor(C.rewardSurface)
+      .border({ width: 1.5, color: C.rewardBorder, radius: R.card })
+      .borderRadius(R.card)
+      .margin({ left: 18, right: 18, top: 10, bottom: 12 })
 
       if (!this.store.leagueUnlocked) {
         Column({ space: 12 }) {
-          Mascot({ mood: 'think', sz: 110 })
-          Text(`完成 ${League.unlockLessons} 节课后解锁排行榜`).fontSize(F.body).fontWeight(W.bold).fontColor(C.ink)
+          Stack({ alignContent: Alignment.BottomEnd }) {
+            Mascot({ mood: 'think', sz: 154, illustrated: true })
+            IconBadge('lock', C.inkMuted, 30, 15)
+          }
+          Text(`完成 ${League.unlockLessons} 节课后解锁排行榜`).fontSize(F.subhead).fontWeight(W.heavy).fontColor(C.ink)
             .textAlign(TextAlign.Center)
-          ProgressBar({ progress: this.store.totalCompletedLessons / League.unlockLessons, barHeight: 12 })
-            .width(220)
+          ProgressBar({ progress: this.store.totalCompletedLessons / League.unlockLessons, barHeight: 10 })
+            .width(214)
           Text(`${this.store.totalCompletedLessons}/${League.unlockLessons}`).fontSize(F.caption).fontWeight(W.bold)
             .fontColor(C.inkMuted)
         }
@@ -460,7 +553,10 @@ export struct ShopTab {
   goodsRow(icon: string, tint: string, name: string, desc: string, price: string, enabled: boolean,
     onBuy: () => void) {
     Row({ space: 12 }) {
-      IconBadge(icon, tint, 46, 22)
+      Stack() {
+        DuoIcon({ name: icon, sz: 21, color: tint })
+      }
+      .width(42).height(42).borderRadius(R.control).backgroundColor(alpha(tint, 0.15))
       Column({ space: 2 }) {
         Text(name).fontSize(F.body).fontWeight(W.bold).fontColor(C.ink)
         Text(desc).fontSize(F.micro).fontWeight(W.bold).fontColor(C.inkMuted).maxLines(2)
@@ -468,37 +564,39 @@ export struct ShopTab {
       .alignItems(HorizontalAlign.Start)
       .layoutWeight(1)
 
-      SmallChunkyButton({ label: price, icon: 'gem', bgColor: enabled ? C.secondary : C.inkSofter,
-        shadowColor: enabled ? C.secondaryDark : C.inkMuted, active: enabled, onTap: () => onBuy() }).width(92)
+      SmallChunkyButton({ label: price, icon: 'gem', bgColor: enabled ? C.primary : C.inkMuted,
+        shadowColor: enabled ? C.primaryDark : C.inkSofter, active: enabled, onTap: () => onBuy() }).width(77)
     }
-    .padding(14)
+    .padding({ left: 12, right: 12, top: 10, bottom: 10 })
     .width('100%')
     .backgroundColor(C.surface)
     .borderRadius(R.card)
-    .border({ width: 2, color: C.border, radius: R.card })
+    .border({ width: 1, color: C.border, radius: R.card })
   }
 
   @Builder
   cosmeticRow(item: CosmeticItem) {
     Row({ space: 12 }) {
       Stack() {
-        Circle().width(46).height(46).fill(alpha(rarityColor(item.rarity), 0.15))
-          .stroke(rarityColor(item.rarity)).strokeWidth(2)
-        DuoIcon({ name: 'sparkles', sz: 20, color: rarityColor(item.rarity) })
-      }
-      Column({ space: 2 }) {
-        Row({ space: 6 }) {
-          Text(item.name).fontSize(F.body).fontWeight(W.bold).fontColor(C.ink)
-          Pill(rarityLabel(item.rarity), '#FFFFFF', rarityColor(item.rarity))
+        if (item.type === 'mascot_skin') {
+          Mascot({ mood: 'happy', sz: 38, still: true, illustrated: true, skin: item.id })
+        } else {
+          DuoIcon({ name: item.type === 'ui_theme' ? 'sparkles' : 'book', sz: 20, color: rarityColor(item.rarity) })
         }
-        Text(item.type === 'mascot_skin' ? '聪聪装扮' : (item.type === 'ui_theme' ? '界面主题' : '课程背景'))
+      }
+      .width(42).height(42).borderRadius(R.control)
+      .backgroundColor(alpha(item.type === 'mascot_skin' ? C.primary : rarityColor(item.rarity), 0.12))
+      Column({ space: 2 }) {
+        Text(item.name).fontSize(F.body).fontWeight(W.bold).fontColor(C.ink)
+        Text((item.type === 'mascot_skin' ? '聪聪装扮' : (item.type === 'ui_theme' ? '界面主题' : '课程背景')) +
+          ` · ${rarityLabel(item.rarity)}`)
           .fontSize(F.micro).fontWeight(W.bold).fontColor(C.inkMuted)
       }
       .alignItems(HorizontalAlign.Start)
       .layoutWeight(1)
 
       if (this.store.isEquipped(item.id)) {
-        Pill('使用中', '#FFFFFF', C.primary)
+        Pill('使用中', C.ink, alpha(C.primary, 0.18))
       } else if (this.store.isOwned(item.id)) {
         SmallChunkyButton({ label: '使用', bgColor: C.primary, shadowColor: C.primaryDark,
           onTap: () => {
@@ -507,7 +605,9 @@ export struct ShopTab {
             SFXEngine.shared.play('tap');
           } }).width(80)
       } else {
-        SmallChunkyButton({ label: `${item.cost}`, icon: 'gem', bgColor: C.secondary, shadowColor: C.secondaryDark,
+        SmallChunkyButton({ label: `${item.cost}`, icon: 'gem',
+          bgColor: this.store.gems >= item.cost ? C.primary : C.inkMuted,
+          shadowColor: this.store.gems >= item.cost ? C.primaryDark : C.inkSofter,
           onTap: () => {
             if (this.store.buyCosmetic(item)) {
               Haptics.success();
@@ -518,11 +618,11 @@ export struct ShopTab {
           } }).width(80)
       }
     }
-    .padding(14)
+    .padding({ left: 12, right: 12, top: 10, bottom: 10 })
     .width('100%')
     .backgroundColor(C.surface)
     .borderRadius(R.card)
-    .border({ width: 2, color: this.store.isEquipped(item.id) ? C.primary : C.border, radius: R.card })
+    .border({ width: 1, color: this.store.isEquipped(item.id) ? C.primary : C.border, radius: R.card })
   }
 
   build() {
@@ -535,12 +635,14 @@ export struct ShopTab {
           DuoIcon({ name: 'gem', sz: 18, color: C.beetle })
           Text(`${this.store.gems}`).fontSize(F.body).fontWeight(W.heavy).fontColor(C.beetle)
         }
+        .padding({ left: 11, right: 11, top: 5, bottom: 5 })
+        .borderRadius(R.control).backgroundColor(alpha(C.beetle, 0.13))
       }
       .padding({ left: 18, right: 18, top: 14, bottom: 10 })
 
       Scroll() {
-        Column({ space: 12 }) {
-          Text('补给').fontSize(F.caption).fontWeight(W.bold).fontColor(C.inkMuted).width('100%')
+        Column({ space: 9 }) {
+          Text('补给').fontSize(F.subhead).fontWeight(W.heavy).fontColor(C.ink).width('100%')
           this.goodsRow('heart', C.danger, '补满红心', `立刻回满 ${Economy.maxHearts} 颗红心`,
             `${Economy.heartRefillCost}`, this.store.hearts < Economy.maxHearts && this.store.gems >= Economy.heartRefillCost,
             (): void => {
@@ -572,7 +674,7 @@ export struct ShopTab {
               }
             })
 
-          Text('装扮').fontSize(F.caption).fontWeight(W.bold).fontColor(C.inkMuted).width('100%').margin({ top: 6 })
+          Text('装扮').fontSize(F.subhead).fontWeight(W.heavy).fontColor(C.ink).width('100%').margin({ top: 6 })
           ForEach(Cosmetics.all(), (item: CosmeticItem) => {
             this.cosmeticRow(item)
           }, (item: CosmeticItem) => `${item.id}-${this.store.isOwned(item.id)}-${this.store.isEquipped(item.id)}`)

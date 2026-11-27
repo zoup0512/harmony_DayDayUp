@@ -1,10 +1,11 @@
 // 用户进度 store —— ProgressStore.swift 的逐方法移植（持久化到 filesDir/cstf/progress.json）。
 // 鸿蒙版不接 iCloud：跨设备迁移走「设置 › 导出/导入存档」（与 Web / iOS 共用同一信封格式）。
 import {
-  ActiveLessonSession, LeagueWeekResult, LessonOutcome, LessonResult, MistakeEntry, Question, QuestionReport, QuestionReportKind,
-  UserProgress
+  ActiveLessonSession, DemonState, LeagueWeekResult, LessonExtras, LessonOutcome, LessonResult, MistakeEntry, Question,
+  QuestionReport, QuestionReportKind, SealedChest, UserProgress
 } from '../models/Types';
 import { advanceStreakDay, Economy, SRS } from '../domain/Economy';
+import { Remedy } from '../domain/KidsMode';
 import { dateString, daysBetween, isDateKey, isoString, todayString, weekDateKeys, weekStartKey,
   weekStartKeyWeeksAgo, dayIndexInWeek } from '../domain/Dates';
 import { Achievement, AchievementSnapshot, Achievements, bookIdFromLessonId, CosmeticItem, Cosmetics,
@@ -47,6 +48,62 @@ export class QuestSnapshot {
   get isComplete(): boolean {
     return this.progress >= this.quest.target;
   }
+}
+
+/** 宝箱解封结果（心魔全部收服后）。 */
+export class UnsealResult {
+  lessonId: string = '';
+  lessonTitle: string = '';
+  gems: number = 0;
+  bonusGems: number = 0;
+  cardTier: number = 0;
+  cardNew: boolean = false;
+  cardUpgraded: boolean = false;
+}
+
+/** 写入知识卡（只升不降）；返回之前的卡级。 */
+function grantCard(p: UserProgress, lessonId: string, tier: number): number {
+  const cards: Record<string, number> = p.knowledgeCards ?? {};
+  const prior = cards[lessonId] ?? 0;
+  if (tier > prior) {
+    cards[lessonId] = tier;
+  }
+  p.knowledgeCards = cards;
+  return prior;
+}
+
+/** 新建或并入同一课的封存宝箱（重做同一课时心魔合并、奖励累加、期限重置）。 */
+function sealChest(p: UserProgress, lessonId: string, extras: LessonExtras, gems: number, cardTier: number,
+  now: Date): SealedChest {
+  const list = p.sealedChests ?? [];
+  const existing = list.find((c: SealedChest) => c.lessonId === lessonId);
+  const expires = dateString(Remedy.expiryDays, now);
+  if (existing !== undefined) {
+    extras.demonQuestionIds.forEach((qid: number) => {
+      if (!existing.demons.some((d: DemonState) => d.questionId === qid)) {
+        existing.demons.push(Remedy.newDemon(qid));
+      }
+    });
+    existing.gems += gems;
+    existing.cardTier = Math.max(existing.cardTier, cardTier);
+    existing.expiresOn = expires;
+    p.sealedChests = list;
+    return existing;
+  }
+  const chest: SealedChest = {
+    id: `${lessonId}@${now.getTime()}`,
+    bookId: extras.bookId,
+    lessonId: lessonId,
+    lessonTitle: extras.lessonTitle,
+    createdAt: isoString(now),
+    expiresOn: expires,
+    gems: gems,
+    cardTier: cardTier,
+    demons: extras.demonQuestionIds.map((qid: number) => Remedy.newDemon(qid))
+  };
+  list.push(chest);
+  p.sealedChests = list;
+  return chest;
 }
 
 export class DayXp {
@@ -310,7 +367,12 @@ export class ProgressStore {
   // 课程结算
   // ============================================================
 
-  completeLesson(lessonId: string, correctCount: number, questionCount: number, now: Date = new Date()): LessonOutcome {
+  /**
+   * extras（儿童模式 / 知识卡）：demonQuestionIds 非空时本课宝石与知识卡封存进宝箱，收服心魔后由 unsealChest 返还；
+   * 答对题的 XP 照常即时到账。extras 为 null 时与 iOS 行为完全一致（仅多发知识卡）。
+   */
+  completeLesson(lessonId: string, correctCount: number, questionCount: number, now: Date = new Date(),
+    extras: LessonExtras | null = null): LessonOutcome {
     this.tickHeartRecharge(now);
     const total = Math.max(1, questionCount);
     const correct = Math.min(Math.max(0, correctCount), total);
@@ -335,6 +397,8 @@ export class ProgressStore {
     const firstPerfect = stars === 3 && priorStars < 3;
     const xpGain = Economy.xpForLesson(correct, perfect, firstPerfect, isWeekend, isExam);
     recordXP(p, xpGain, now);
+    const bonusXp = extras !== null ? Math.max(0, extras.bonusXp) : 0;
+    recordXP(p, bonusXp, now);
     p.dailyLessons = (p.dailyLessons ?? 0) + 1;
     if (prior === undefined || stars >= prior.stars) {
       p.completedLessons[lessonId] = result;
@@ -342,19 +406,43 @@ export class ProgressStore {
     const bump = bumpStreak(p, now);
     const reachedNow = todayXpBefore < goal && (p.todayXp ?? 0) >= goal;
     const gemsGained = Economy.lessonGemDrip(stars, firstPerfect, reachedNow);
-    p.gems = (p.gems ?? 0) + gemsGained;
-    p.lifetimeGems = (p.lifetimeGems ?? 0) + gemsGained;
+    const cardTier = isExam ? 0 : stars;
+    const sealed = extras !== null && extras.demonQuestionIds.length > 0;
+    let chest: SealedChest | null = null;
+    let priorCard = 0;
+    if (sealed && extras !== null) {
+      chest = sealChest(p, lessonId, extras, gemsGained, cardTier, now);
+    } else {
+      p.gems = (p.gems ?? 0) + gemsGained;
+      p.lifetimeGems = (p.lifetimeGems ?? 0) + gemsGained;
+      if (cardTier > 0) {
+        priorCard = grantCard(p, lessonId, cardTier);
+      }
+    }
     const newly = latchAchievements(p);
     this.commit(p);
     this.reschedule(p.streak, true);
 
     const o = new LessonOutcome();
-    o.xpGained = xpGain;
+    o.xpGained = xpGain + bonusXp;
+    o.bonusXp = bonusXp;
+    o.cardTier = cardTier;
+    if (chest !== null) {
+      o.sealedChestId = chest.id;
+      o.demonCount = chest.demons.length;
+      o.sealedGems = chest.gems;
+      o.gemsGained = 0;
+    } else {
+      o.cardNew = cardTier > 0 && priorCard === 0;
+      o.cardUpgraded = priorCard > 0 && cardTier > priorCard;
+    }
     o.stars = stars;
     o.streakBefore = streakBefore;
     o.streakAfter = p.streak;
     o.dailyGoalReachedNow = reachedNow;
-    o.gemsGained = gemsGained;
+    if (chest === null) {
+      o.gemsGained = gemsGained;
+    }
     o.newAchievementIds = newly.map((a: Achievement) => a.id);
     o.milestoneGems = bump.milestoneGems;
     o.weekendDoubled = isWeekend && xpGain > 0;
@@ -427,6 +515,90 @@ export class ProgressStore {
   get dueMistakes(): MistakeEntry[] {
     const _day = this.dayKey;
     return SRS.dueEntries(this.progress.mistakesBank);
+  }
+
+  // ============================================================
+  // 儿童模式：封存宝箱 / 心魔试炼
+  // ============================================================
+
+  /** 未过期的封存宝箱（最早过期的在前）。 */
+  get sealedChests(): SealedChest[] {
+    const today = this.dayKey;
+    return (this.progress.sealedChests ?? []).filter((c: SealedChest) => c.expiresOn >= today)
+      .sort((a: SealedChest, b: SealedChest) => a.expiresOn.localeCompare(b.expiresOn));
+  }
+
+  sealedChest(id: string): SealedChest | null {
+    return (this.progress.sealedChests ?? []).find((c: SealedChest) => c.id === id) ?? null;
+  }
+
+  get pendingDemonCount(): number {
+    return this.sealedChests.reduce((n: number, c: SealedChest) =>
+      n + c.demons.filter((d: DemonState) => !Remedy.isSubdued(d)).length, 0);
+  }
+
+  /** 试炼中每答一题就落盘，中途退出下次接着来。 */
+  updateChestDemons(chestId: string, demons: DemonState[]): void {
+    const p = clone(this.progress);
+    const chest = (p.sealedChests ?? []).find((c: SealedChest) => c.id === chestId);
+    if (chest === undefined) {
+      return;
+    }
+    chest.demons = JSON.parse(JSON.stringify(demons)) as DemonState[];
+    this.commit(p);
+  }
+
+  /** 心魔全部收服 → 解封：返还宝石 + 收服奖励 + 知识卡。未全部收服 / 不存在时返回 null。 */
+  unsealChest(chestId: string): UnsealResult | null {
+    const p = clone(this.progress);
+    const list = p.sealedChests ?? [];
+    const chest = list.find((c: SealedChest) => c.id === chestId);
+    if (chest === undefined || !chest.demons.every((d: DemonState) => Remedy.isSubdued(d))) {
+      return null;
+    }
+    const r = new UnsealResult();
+    r.lessonId = chest.lessonId;
+    r.lessonTitle = chest.lessonTitle;
+    r.bonusGems = chest.demons.length * Remedy.bonusGemsPerDemon;
+    r.gems = chest.gems + r.bonusGems;
+    p.gems = (p.gems ?? 0) + r.gems;
+    p.lifetimeGems = (p.lifetimeGems ?? 0) + r.gems;
+    if (chest.cardTier > 0) {
+      const prior = grantCard(p, chest.lessonId, chest.cardTier);
+      r.cardTier = chest.cardTier;
+      r.cardNew = prior === 0;
+      r.cardUpgraded = prior > 0 && chest.cardTier > prior;
+    }
+    p.sealedChests = list.filter((c: SealedChest) => c.id !== chestId);
+    latchAchievements(p);
+    this.commit(p);
+    return r;
+  }
+
+  /** 过期宝箱作废（错题仍在错题本里按 SRS 复习）。 */
+  private pruneExpiredChests(now: Date): void {
+    const today = todayString(now);
+    const list = this.progress.sealedChests ?? [];
+    if (!list.some((c: SealedChest) => c.expiresOn < today)) {
+      return;
+    }
+    const p = clone(this.progress);
+    p.sealedChests = list.filter((c: SealedChest) => c.expiresOn >= today);
+    this.commit(p);
+  }
+
+  // ============================================================
+  // 知识卡
+  // ============================================================
+
+  cardTier(lessonId: string): number {
+    const cards = this.progress.knowledgeCards;
+    return cards !== undefined && cards !== null ? (cards[lessonId] ?? 0) : 0;
+  }
+
+  get knowledgeCardCount(): number {
+    const cards = this.progress.knowledgeCards;
+    return cards !== undefined && cards !== null ? Object.keys(cards).length : 0;
   }
 
   // ============================================================
@@ -1168,6 +1340,9 @@ export class ProgressStore {
       const lesson = DataLoader.tryLesson(bookId, lessonId);
       return lesson?.questions.find((q: Question) => q.id === questionId) ?? null;
     }, this.progress.leagueSalt, this.progress.lastReviewHeartDate, now);
+    // 信封 v1 不含鸿蒙独有字段：知识卡与封存宝箱保留本机的。
+    restored.knowledgeCards = this.progress.knowledgeCards ?? null;
+    restored.sealedChests = this.progress.sealedChests ?? null;
     this.pendingDailyReward = null;
     this.commit(restored);
   }
@@ -1225,6 +1400,7 @@ export class ProgressStore {
     this.tickHeartRecharge(now);
     this.claimDailyRewardIfDue(now);
     this.refreshLeague(now);
+    this.pruneExpiredChests(now);
     const today = todayString(now);
     if (today !== this.dayKey) {
       this.dayKey = today;

@@ -60,11 +60,11 @@ export class Palette {
   }
 
   get primary(): string {
-    return this.theme?.primary ?? this.feather;
+    return this.theme?.primary ?? '#61C63F';
   }
 
   get primaryDark(): string {
-    return this.theme?.primaryDark ?? this.treeFrog;
+    return this.theme?.primaryDark ?? '#3F9734';
   }
 
   get secondary(): string {
@@ -77,11 +77,11 @@ export class Palette {
   }
 
   get ink(): string {
-    return this.a('#4B4B4B', '#FFFFFF');
+    return this.a('#263B2B', '#FFFFFF');
   }
 
   get inkLight(): string {
-    return this.a('#707070', '#93A7AF');
+    return this.a('#53695A', '#A4B8B0');
   }
 
   get inkMuted(): string {
@@ -89,7 +89,7 @@ export class Palette {
   }
 
   get inkSofter(): string {
-    return this.a('#AFAFAF', '#52656D');
+    return this.a('#728376', '#93A7AF');
   }
 
   get bg(): string {
@@ -110,7 +110,7 @@ export class Palette {
   }
 
   get bgSofter(): string {
-    return this.a('#E5E5E5', '#37464F');
+    return this.a('#E9EDE7', '#37464F');
   }
 
   get surface(): string {
@@ -118,11 +118,23 @@ export class Palette {
   }
 
   get surfaceAlt(): string {
-    return this.a('#F7F7F7', '#37464F');
+    return this.a('#F2F6EE', '#37464F');
   }
 
   get border(): string {
-    return this.a('#E5E5E5', '#37464F');
+    return this.a('#DBE6D6', '#37464F');
+  }
+
+  get studyHeader(): string {
+    return this.theme === null ? this.a('#91DB79', '#254132') : alpha(this.primary, this.dark ? 0.22 : 0.30);
+  }
+
+  get rewardSurface(): string {
+    return this.a('#FFF3CC', '#3B3426');
+  }
+
+  get rewardBorder(): string {
+    return this.a('#EACB79', '#76613D');
   }
 
   get lockedNodeTop(): string {

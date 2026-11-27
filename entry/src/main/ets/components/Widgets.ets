@@ -68,6 +68,7 @@ export struct StreakCalendar {
 @ComponentV2
 export struct DailyGoalRing {
   @Param sz: number = 72;
+  @Param captionMode: 'none' | 'compact' | 'full' = 'none';
   @Local showSheet: boolean = false;
   store: ProgressStore = ProgressStore.shared;
 
@@ -110,7 +111,8 @@ export struct DailyGoalRing {
     .width('100%')
   }
 
-  build() {
+  @Builder
+  ring() {
     Stack() {
       Progress({ value: 100, total: 100, type: ProgressType.Ring })
         .width(this.sz)
@@ -120,19 +122,40 @@ export struct DailyGoalRing {
       Progress({ value: this.progress() * 100, total: 100, type: ProgressType.Ring })
         .width(this.sz)
         .height(this.sz)
-        .color(this.progress() >= 1 ? '#FFB300' : '#58CC02')
+        .color(this.progress() >= 1 ? C.bee : C.primary)
         .style({ strokeWidth: Math.max(5, this.sz * 0.11), shadow: true })
       Column({ space: 1 }) {
         if (this.progress() >= 1) {
           DuoIcon({ name: 'checkCircle', sz: this.sz * 0.26, color: C.primary })
         } else {
-          DuoIcon({ name: 'bolt', sz: this.sz * 0.18, color: C.secondary })
+          DuoIcon({ name: 'bolt', sz: this.captionMode === 'compact' ? 14 : this.sz * 0.22, color: C.primaryDark })
         }
-        Text(`${this.store.todayXp}`).fontSize(this.sz * 0.24).fontWeight(W.heavy).fontColor(C.ink)
+        if (this.captionMode !== 'compact') {
+          Text(`${this.store.todayXp}`).fontSize(this.sz * 0.24).fontWeight(W.heavy).fontColor(C.ink)
+        }
       }
     }
     .width(this.sz)
     .height(this.sz)
+  }
+
+  build() {
+    Row({ space: this.captionMode === 'compact' ? 5 : 12 }) {
+      this.ring()
+      if (this.captionMode !== 'none') {
+        Column({ space: 3 }) {
+          Text('今日目标').fontSize(this.captionMode === 'compact' ? F.micro : F.body)
+            .fontWeight(W.heavy).fontColor(C.ink)
+          Text(`${this.store.todayXp} / ${this.store.dailyGoal}${this.captionMode === 'full' ? ' XP · 点圆环修改' : ''}`)
+            .fontSize(this.captionMode === 'compact' ? F.micro : F.caption).fontColor(C.inkMuted)
+          if (this.captionMode === 'full' && this.store.dailyGoalReached) {
+            Text('今日目标已完成').fontSize(F.micro).fontWeight(W.bold).fontColor(C.primary)
+          }
+        }
+        .alignItems(HorizontalAlign.Start)
+      }
+    }
+    .width(this.captionMode === 'full' ? '100%' : undefined)
     .onClick(() => {
       this.showSheet = true;
     })
@@ -155,9 +178,16 @@ export struct DailyQuestsCard {
 
   @Builder
   row(q: Quest) {
-    Row({ space: 12 }) {
-      IconBadge(this.store.isQuestClaimed(q) ? 'check' : q.icon, this.store.isQuestComplete(q) ? C.primary : C.fox, 40, 17)
-      Column({ space: 5 }) {
+    Row({ space: 9 }) {
+      Stack() {
+        DuoIcon({ name: this.store.isQuestClaimed(q) ? 'check' : q.icon, sz: 17,
+          color: this.store.isQuestComplete(q) ? C.primaryDark : C.fox })
+      }
+      .width(31)
+      .height(31)
+      .backgroundColor(alpha(this.store.isQuestComplete(q) ? C.primary : C.fox, 0.16))
+      .borderRadius(10)
+      Column({ space: 3 }) {
         Text(q.title)
           .fontSize(F.caption)
           .fontWeight(W.bold)
@@ -166,7 +196,7 @@ export struct DailyQuestsCard {
         Row({ space: 8 }) {
           ProgressBar({
             progress: Math.min(this.store.questProgress(q), q.target) / Math.max(1, q.target),
-            barHeight: 8,
+            barHeight: 6,
             fillColor: this.store.isQuestComplete(q) ? C.primary : C.fox,
             trackColor: C.surfaceAlt
           }).layoutWeight(1)
@@ -179,31 +209,33 @@ export struct DailyQuestsCard {
 
       if (!this.store.isQuestClaimed(q) && this.store.isQuestComplete(q)) {
         SmallChunkyButton({
-          label: `${q.reward}`, icon: 'gem', bgColor: C.primary, shadowColor: C.primaryDark,
+          label: `领取 ${q.reward}`, icon: 'gem', bgColor: C.primaryDark, shadowColor: C.primaryDark,
           onTap: () => {
             if (this.store.claimQuest(q)) {
               Haptics.success();
               SFXEngine.shared.play('questClaim');
             }
           }
-        }).width(74)
+        }).width(88).accessibilityText(`${q.title}，领取 ${q.reward} 宝石`)
+      } else if (this.store.isQuestClaimed(q)) {
+        Text('已领取').fontSize(F.micro).fontWeight(W.bold).fontColor(C.inkMuted)
       } else {
         Row({ space: 3 }) {
-          DuoIcon({ name: 'gem', sz: 10, color: this.store.isQuestClaimed(q) ? C.inkSofter : C.secondary })
-          Text(`${q.reward}`).fontSize(F.micro).fontWeight(W.heavy)
-            .fontColor(this.store.isQuestClaimed(q) ? C.inkSofter : C.secondary)
+          DuoIcon({ name: 'gem', sz: 13, color: C.beetle })
+          Text(`${q.reward}`).fontSize(F.micro).fontWeight(W.heavy).fontColor(C.inkMuted)
         }
-        .width(74)
+        .width(36)
         .justifyContent(FlexAlign.Center)
+        .accessibilityText(`奖励 ${q.reward} 宝石`)
       }
     }
     .width('100%')
   }
 
   build() {
-    Column({ space: 14 }) {
+    Column({ space: 10 }) {
       Row({ space: 8 }) {
-        DuoIcon({ name: 'target', sz: 17, color: C.fox })
+        DuoIcon({ name: 'flag', sz: 18, color: C.primaryDark })
         Text('每日任务').fontSize(F.subhead).fontWeight(W.bold).fontColor(C.ink).layoutWeight(1)
         if (this.store.claimableQuestCount > 0) {
           Text(`${this.store.claimableQuestCount} 个可领取`).fontSize(F.micro).fontWeight(W.bold).fontColor('#FFFFFF')
@@ -218,7 +250,7 @@ export struct DailyQuestsCard {
         this.row(q)
       }, (q: Quest) => `${q.id}-${this.store.progress.claimedQuests?.length ?? 0}`)
     }
-    .padding(16)
+    .padding(14)
     .width('100%')
     .backgroundColor(C.surface)
     .borderRadius(R.card)
@@ -597,21 +629,6 @@ function tabIcon(t: AppTab): string {
   }
 }
 
-function tabColor(t: AppTab): string {
-  switch (t) {
-    case 'learn':
-      return C.primary;
-    case 'league':
-      return C.bee;
-    case 'review':
-      return C.fox;
-    case 'shop':
-      return C.beetle;
-    default:
-      return C.secondary;
-  }
-}
-
 /** 底部 Tab 栏（BottomTabBar）：错题待复习数 / 可领奖励数 / 联赛结算红点。 */
 @ComponentV2
 export struct BottomTabBar {
@@ -619,13 +636,39 @@ export struct BottomTabBar {
   @Event onSelect: (t: AppTab) => void = (_t: AppTab) => {
   };
   store: ProgressStore = ProgressStore.shared;
+  @Local dueReviews: number = 0;
+  @Local readyRewards: number = 0;
+  @Local leagueResult: boolean = false;
+  private unsubscribe: () => void = () => {};
+
+  private updateBadges(): void {
+    this.dueReviews = this.store.dueMistakes.length;
+    this.readyRewards = this.store.claimableQuestCount + this.store.claimableAchievementCount;
+    this.leagueResult = this.store.pendingLeagueResult !== null;
+  }
+
+  aboutToAppear(): void {
+    this.updateBadges();
+    this.unsubscribe = this.store.onChange(() => this.updateBadges());
+  }
+
+  aboutToDisappear(): void {
+    this.unsubscribe();
+  }
+
+  private tabInk(t: AppTab): string {
+    if (t !== this.active) {
+      return C.inkMuted;
+    }
+    return C.dark || C.theme !== null ? C.primary : '#327838';
+  }
 
   private badgeCount(t: AppTab): number {
     if (t === 'review') {
-      return this.store.dueMistakes.length;
+      return this.dueReviews;
     }
     if (t === 'profile') {
-      return this.store.claimableQuestCount + this.store.claimableAchievementCount;
+      return this.readyRewards;
     }
     return 0;
   }
@@ -634,14 +677,15 @@ export struct BottomTabBar {
     Row() {
       ForEach(ALL_TABS, (t: AppTab) => {
         Stack({ alignContent: Alignment.TopEnd }) {
-          Stack() {
-            if (this.active === t) {
-              Row().width(60).height(40).borderRadius(R.card).backgroundColor(alpha(tabColor(t), 0.14))
+          Column({ space: 3 }) {
+            Stack() {
+              DuoIcon({ name: tabIcon(t), sz: 21, color: this.tabInk(t) })
             }
-            DuoIcon({ name: tabIcon(t), sz: 25, color: this.active === t ? tabColor(t) : C.inkSofter })
+            .width(48).height(29).borderRadius(11)
+            .backgroundColor(this.active === t ? alpha(C.primary, 0.20) : Color.Transparent)
+            Text(tabLabel(t)).fontSize(F.micro).fontWeight(W.bold).fontColor(this.tabInk(t)).maxLines(1)
           }
-          .width(64)
-          .height(44)
+          .width('100%').height('100%').justifyContent(FlexAlign.Center)
 
           if (this.badgeCount(t) > 0) {
             Text(this.badgeCount(t) > 99 ? '99+' : `${this.badgeCount(t)}`)
@@ -655,8 +699,8 @@ export struct BottomTabBar {
               .backgroundColor(C.danger)
               .borderRadius(9)
               .border({ width: 2, color: C.bg, radius: 9 })
-              .translate({ x: 4, y: -2 })
-          } else if (t === 'league' && this.store.pendingLeagueResult !== null) {
+              .margin({ top: 2, right: 4 })
+          } else if (t === 'league' && this.leagueResult) {
             Circle().width(10).height(10).fill(C.danger).stroke(C.bg).strokeWidth(2)
           }
         }
@@ -673,9 +717,9 @@ export struct BottomTabBar {
       }, (t: AppTab) => t)
     }
     .width('100%')
-    .height(66)
-    .padding({ top: 6 })
-    .backgroundColor(C.bg)
+    .height(65)
+    .padding({ left: 5, right: 5 })
+    .backgroundColor(C.dark || C.theme !== null ? C.bg : '#FBFDF8')
     .border({ width: { top: 1 }, color: C.border })
   }
 }

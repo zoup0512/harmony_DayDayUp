@@ -19,6 +19,8 @@ import { LessonResultPage } from '../features/LessonResult';
 import { ReviewTab, ReviewRunner, LeagueTab, ShopTab } from '../features/ReviewLeagueShop';
 import { StoriesPage, StoryReaderPage, PassagesPage, PassageReaderPage } from '../features/Stories';
 import { ProfileTab, AchievementsPage, SettingsPage } from '../features/Profile';
+import { RemedyPage } from '../features/Remedy';
+import { CardAlbumPage } from '../features/Cards';
 import { League } from '../domain/Seeded';
 
 @Entry
@@ -168,6 +170,10 @@ struct Index {
         UnitGuidePage({ route: route })
       } else if (route.name === 'jumpTest') {
         JumpTestPage({ route: route })
+      } else if (route.name === 'remedy') {
+        RemedyPage({ route: route })
+      } else if (route.name === 'cards') {
+        CardAlbumPage()
       }
     }
     .width('100%')

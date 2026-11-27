@@ -22,6 +22,7 @@ const K_APPEARANCE = 'cstf.appearance';
 const K_REMINDER = 'cstf.streakReminder';
 const K_HOUR = 'cstf.reminderHour';
 const K_MINUTE = 'cstf.reminderMinute';
+const K_KIDS = 'cstf.kidsMode';
 
 @ObservedV2
 export class SettingsStore {
@@ -36,6 +37,8 @@ export class SettingsStore {
   @Trace streakReminderEnabled: boolean = false;
   @Trace reminderHour: number = 20;
   @Trace reminderMinute: number = 0;
+  /** 儿童模式（默认开）：答错不扣红心，改为封存宝箱 + 心魔试炼；课内编排神速 / 踮脚题。 */
+  @Trace kidsMode: boolean = true;
 
   /** 系统当前是否深色（EntryAbility 在启动与 onConfigurationUpdate 时写入）。 */
   @Trace systemDark: boolean = false;
@@ -79,6 +82,13 @@ export class SettingsStore {
     this.reminderHour = h >= 0 && h <= 23 ? h : SettingsStore.defaultReminderHour;
     const m = p.getSync(K_MINUTE, SettingsStore.defaultReminderMinute) as number;
     this.reminderMinute = m >= 0 && m <= 59 ? m : SettingsStore.defaultReminderMinute;
+    this.kidsMode = p.getSync(K_KIDS, true) as boolean;
+  }
+
+  setKidsMode(v: boolean): void {
+    this.kidsMode = v;
+    this.put(K_KIDS, v);
+    this.emit();
   }
 
   private put(key: string, value: boolean | number | string): void {

@@ -119,12 +119,30 @@ export struct QuestionRenderer {
 }
 
 const TRUE_FALSE_CARD_HEIGHT: number = 110;
+/** 2×2 宫格选项卡高度（儿童触控目标 ≥ 64vp）。 */
+const GRID_CARD_HEIGHT: number = 76;
+/** 宫格模式下单个选项允许的最大「视觉宽度」（汉字记 1，ASCII 记 0.6）。 */
+const GRID_MAX_LABEL_WIDTH: number = 4.5;
+
+function labelVisualWidth(s: string): number {
+  let w = 0;
+  for (let i = 0; i < s.length; i++) {
+    w += s.charCodeAt(i) >= 0x2E80 ? 1 : 0.6;
+  }
+  return w;
+}
+
+/** 题干字号：小学生题干 ≥ 24fp；超长题干略收，避免一屏放不下。 */
+export function stemFontSize(text: string): number {
+  return text.length <= 40 ? 24 : 22;
+}
 
 @ComponentV2
 struct OptionCard {
   @Param label: string = '';
   @Param state: CardState = 'default';
   @Param tall: boolean = false;
+  @Param grid: boolean = false;
   @Param icon: string = '';
   @Param shake: number = 0;
   @Event onTap: () => void = () => {
@@ -145,9 +163,17 @@ struct OptionCard {
     ]);
   }
 
+  /** tall / grid 为固定高度；列表模式返回 undefined（随内容）。 */
+  private fixedHeight(): number | undefined {
+    if (this.tall) {
+      return TRUE_FALSE_CARD_HEIGHT;
+    }
+    return this.grid ? GRID_CARD_HEIGHT : undefined;
+  }
+
   build() {
     Stack({ alignContent: Alignment.Top }) {
-      Row().width('100%').height(this.tall ? TRUE_FALSE_CARD_HEIGHT : this.cardH)
+      Row().width('100%').height(this.fixedHeight() ?? this.cardH)
         .borderRadius(R.card).backgroundColor(cardLedge(this.state)).margin({ top: 4 })
       Column() {
         if (this.tall) {
@@ -158,6 +184,26 @@ struct OptionCard {
           .width('100%')
           .layoutWeight(1)
           .justifyContent(FlexAlign.Center)
+        } else if (this.grid) {
+          Stack({ alignContent: Alignment.TopEnd }) {
+            Text(this.label)
+              .maxFontSize(F.title)
+              .minFontSize(F.subhead)
+              .maxLines(1)
+              .fontWeight(W.heavy)
+              .fontColor(cardInk(this.state))
+              .textAlign(TextAlign.Center)
+              .width('100%')
+              .height('100%')
+              .padding({ left: 10, right: 10 })
+            if (this.state === 'correct') {
+              DuoIcon({ name: 'checkCircle', sz: 20, color: C.primary }).margin({ top: 6, right: 6 })
+            } else if (this.state === 'wrong') {
+              DuoIcon({ name: 'xmarkCircle', sz: 20, color: C.danger }).margin({ top: 6, right: 6 })
+            }
+          }
+          .width('100%')
+          .layoutWeight(1)
         } else {
           Row({ space: 12 }) {
             Text(this.label).fontSize(F.body).fontWeight(W.heavy).fontColor(cardInk(this.state)).layoutWeight(1)
@@ -173,7 +219,7 @@ struct OptionCard {
         }
       }
       .width('100%')
-      .height(this.tall ? TRUE_FALSE_CARD_HEIGHT : undefined)
+      .height(this.fixedHeight())
       .onAreaChange((_o: Area, n: Area) => {
         const h = Number(n.height);
         if (h > 0 && h !== this.cardH) {
@@ -231,27 +277,72 @@ struct ChoiceQuestion {
     return selected ? 'wrong' : 'disabled';
   }
 
+  private get options(): string[] {
+    return this.question?.options ?? [];
+  }
+
+  /** 2–4 个短选项（数字 / 短词）用 2×2 大按钮，长选项保持单列。 */
+  private get useGrid(): boolean {
+    const opts = this.options;
+    return opts.length >= 2 && opts.length <= 4 &&
+    opts.every((o: string) => labelVisualWidth(renderMathText(o)) <= GRID_MAX_LABEL_WIDTH);
+  }
+
+  /** 宫格行：[[0,1],[2,3]]，奇数个时最后一行只有一个。 */
+  private get gridRows(): number[][] {
+    const rows: number[][] = [];
+    for (let i = 0; i < this.options.length; i += 2) {
+      rows.push(i + 1 < this.options.length ? [i, i + 1] : [i]);
+    }
+    return rows;
+  }
+
+  private tap(i: number): void {
+    if (this.phase !== 'answering') {
+      return;
+    }
+    Haptics.tap();
+    SFXEngine.shared.play('tap');
+    this.onAnswer(String.fromCharCode(65 + i));
+    const opts = this.question?.audio?.options;
+    if (opts !== undefined && opts !== null && i < opts.length) {
+      AudioPlayer.shared.playOne(opts[i]);
+    }
+  }
+
+  @Builder
+  card(i: number, grid: boolean) {
+    OptionCard({
+      label: renderMathText(this.options[i]),
+      state: this.stateFor(i),
+      grid: grid,
+      shake: this.stateFor(i) === 'wrong' ? this.shake : 0,
+      onTap: () => this.tap(i)
+    })
+  }
+
   build() {
     Column({ space: 12 }) {
-      ForEach(this.question?.options ?? [], (opt: string, i: number) => {
-        OptionCard({
-          label: renderMathText(opt),
-          state: this.stateFor(i),
-          shake: this.stateFor(i) === 'wrong' ? this.shake : 0,
-          onTap: () => {
-            if (this.phase !== 'answering') {
-              return;
-            }
-            Haptics.tap();
-            SFXEngine.shared.play('tap');
-            this.onAnswer(String.fromCharCode(65 + i));
-            const opts = this.question?.audio?.options;
-            if (opts !== undefined && opts !== null && i < opts.length) {
-              AudioPlayer.shared.playOne(opts[i]);
+      if (this.useGrid) {
+        ForEach(this.gridRows, (row: number[]) => {
+          Row({ space: 12 }) {
+            ForEach(row, (i: number) => {
+              Column() {
+                this.card(i, true)
+              }
+              .layoutWeight(1)
+            }, (i: number) => `${i}-${this.options[i]}`)
+            if (row.length === 1) {
+              Blank().layoutWeight(1)
             }
           }
-        })
-      }, (opt: string, i: number) => `${i}-${opt}`)
+          .width('100%')
+        }, (row: number[]) => row.join(','))
+      } else {
+        ForEach(this.options, (opt: string, i: number) => {
+          this.card(i, false)
+        }, (opt: string, i: number) => `${i}-${opt}`)
+      }
     }
     .width('100%')
   }

@@ -6,9 +6,10 @@ import { gradeAnswer, instructionText } from '../domain/Grade';
 import { renderMathText } from '../domain/MathText';
 import { formatCountdown, isoString } from '../domain/Dates';
 import {
-  ActiveLessonSession, KnowledgeSummary, Lesson, LessonRunResult, MascotMood, MascotReaction, Question,
+  ActiveLessonSession, KnowledgeSummary, Lesson, LessonExtras, LessonRunResult, MascotMood, MascotReaction, Question,
   QuestionReportKind
 } from '../models/Types';
+import { LessonSlots } from '../domain/KidsMode';
 import { ProgressStore } from '../stores/ProgressStore';
 import { SettingsStore } from '../stores/SettingsStore';
 import { DataLoader } from '../services/DataLoader';
@@ -19,8 +20,15 @@ import { ChunkyButton, DuoIcon, ModalCard, ProgressBar, SpeechBubble } from '../
 import { Mascot } from '../components/Mascot';
 import { ComboOverlay, XPFloater } from '../components/Effects';
 import { TTSButton } from '../components/Widgets';
-import { QuestionPhase, QuestionRenderer } from './Questions';
+import { QuestionPhase, QuestionRenderer, stemFontSize } from './Questions';
 import { AppRoute, Router } from './Router';
+
+/** 答对后自动进入下一题的延迟：留出 +XP 飞字（~1.05s）的时间；连击浮层（320ms 起，约 1.4s 结束）时再多等一会。 */
+const AUTO_ADVANCE_MS: number = 1200;
+const AUTO_ADVANCE_COMBO_MS: number = 1900;
+
+/** 神速题：idle 未到 → running 计时中 → expired 超时（仍可作答，无奖励）/ hit 限时答对 → done。 */
+type SpeedState = 'idle' | 'running' | 'expired' | 'hit' | 'done';
 
 /** 课程内容指纹（不含音频），用来判断挂起的会话还能不能续。 */
 export function lessonContentKey(lesson: Lesson): string {
@@ -96,11 +104,29 @@ export struct LessonRunner {
   private startedAt: string = isoString();
   private floaterSeq: number = 0;
   private timer: number = -1;
+  private autoTimer: number = -1;
   @Local mHearts: number = ProgressStore.shared.hearts;
+  // ---- 儿童模式 ----
+  /** 进入课程时的模式快照（课中切换设置不影响本课）。 */
+  private kids: boolean = SettingsStore.shared.kidsMode;
+  private slots: LessonSlots = LessonSlots.none();
+  @Local speedState: SpeedState = 'idle';
+  @Local speedLeft: number = LessonSlots.speedSeconds;
+  private speedDeadline: number = 0;
+  private speedTimer: number = -1;
+  private bonusXp: number = 0;
+  @Local floatAmount: number = Economy.xpPerCorrect;
+  private cardTeased: boolean = false;
+  @Local showCardTease: boolean = false;
   private unsubStore: () => void = () => {
   };
   private unsubBack: () => void = () => {
   };
+
+  /** 计入心魔的错题（踮脚题答错不算）。 */
+  private get demonIds(): number[] {
+    return this.kids ? this.missed.filter((id: number) => id !== this.slots.stretchId) : [];
+  }
 
   private get lessonId(): string {
     return this.route.lessonId;
@@ -122,7 +148,8 @@ export struct LessonRunner {
     try {
       const l = DataLoader.loadLesson(this.route.bookId, this.lessonId);
       this.lesson = l;
-      this.queue = l.questions.slice();
+      this.slots = this.kids && !this.isExam ? LessonSlots.pick(l.questions) : LessonSlots.none();
+      this.queue = this.slots.arrange(l.questions);
       const session = this.store.activeSession(this.lessonId);
       if (session !== null && (session.solvedIds.length > 0 || session.missedIds.length > 0)) {
         if (canResume(session, l)) {
@@ -137,6 +164,7 @@ export struct LessonRunner {
       }
       if (!this.showIntro && this.pendingResume === null) {
         this.autoNarrate();
+        this.armSlot();
       }
     } catch (e) {
       this.loadError = (e as Error).message;
@@ -148,10 +176,24 @@ export struct LessonRunner {
         this.store.tickHeartRecharge();
       }
     }, 1000);
+    this.speedTimer = setInterval(() => {
+      if (this.speedState !== 'running') {
+        return;
+      }
+      const left = Math.max(0, Math.ceil((this.speedDeadline - Date.now()) / 1000));
+      if (left !== this.speedLeft) {
+        this.speedLeft = left;
+      }
+      if (left <= 0) {
+        this.speedState = 'expired';
+      }
+    }, 250);
   }
 
   aboutToDisappear(): void {
     clearInterval(this.timer);
+    clearInterval(this.speedTimer);
+    this.cancelAutoAdvance();
     this.unsubStore();
     this.unsubBack();
     AudioPlayer.shared.stop();
@@ -202,10 +244,37 @@ export struct LessonRunner {
     }
   }
 
+  /** 进入一道题时：神速题第一次出现开始计时。 */
+  private armSlot(): void {
+    const q = this.current();
+    if (q === undefined || q.id !== this.slots.speedId || this.speedState !== 'idle') {
+      return;
+    }
+    this.speedDeadline = Date.now() + LessonSlots.speedSeconds * 1000;
+    this.speedLeft = LessonSlots.speedSeconds;
+    this.speedState = 'running';
+  }
+
+  private isSpeedBanner(q: Question): boolean {
+    return q.id === this.slots.speedId &&
+      (this.speedState === 'running' || this.speedState === 'expired' || this.speedState === 'hit');
+  }
+
   private check(q: Question): void {
     const ok = gradeAnswer(q, this.answer);
     this.feedbackTitle = ok ? pickRandom(['太棒了！', '完美！', '做得好！', '天才！', '继续保持！', '漂亮！']) :
       pickRandom(['答错了', '差一点', '加油', '没关系', '下次就对！']);
+    let speedBonus = 0;
+    if (q.id === this.slots.speedId && (this.speedState === 'running' || this.speedState === 'expired')) {
+      if (ok && this.speedState === 'running' && Date.now() <= this.speedDeadline) {
+        speedBonus = LessonSlots.speedBonusXp(Economy.isWeekend(), this.isExam);
+        this.bonusXp += speedBonus;
+        this.speedState = 'hit';
+        this.feedbackTitle = '神速！';
+      } else {
+        this.speedState = 'done';
+      }
+    }
     this.getUIContext().animateTo({ curve: Motion.reveal() }, () => {
       this.phase = 'checked';
       this.isCorrect = ok;
@@ -221,9 +290,12 @@ export struct LessonRunner {
       const floatXp = Economy.xpPerCorrect * (this.isExam ? Economy.examXpMultiplier : 1) *
         (Economy.isWeekend() ? Economy.weekendXpMultiplier : 1);
       this.sessionXp += floatXp;
+      this.floatAmount = floatXp + speedBonus;
       this.floaters = this.floaters.concat([++this.floaterSeq]);
       this.sweep++;
-      if (this.combo === 3 || this.combo === 5 || this.combo === 10) {
+      this.maybeTeaseCard();
+      const isMilestone = this.combo === 3 || this.combo === 5 || this.combo === 10;
+      if (isMilestone) {
         const milestone = this.combo;
         setTimeout(() => {
           this.comboValue = milestone;
@@ -233,6 +305,7 @@ export struct LessonRunner {
           }, 1500);
         }, 320);
       }
+      this.scheduleAutoAdvance(isMilestone ? AUTO_ADVANCE_COMBO_MS : AUTO_ADVANCE_MS);
     } else {
       this.attempted = true;
       if (!this.missed.includes(q.id)) {
@@ -243,20 +316,22 @@ export struct LessonRunner {
       SFXEngine.shared.play('wrong');
       Haptics.wrong();
       this.flash++;
-      this.pendingHeartLosses++;
-      setTimeout(() => {
-        this.store.loseHeart();
-        SFXEngine.shared.play('heartLoss');
-        Haptics.heartLoss();
-        this.pendingHeartLosses = Math.max(0, this.pendingHeartLosses - 1);
-      }, 400);
+      if (!this.kids) {
+        this.pendingHeartLosses++;
+        setTimeout(() => {
+          this.store.loseHeart();
+          SFXEngine.shared.play('heartLoss');
+          Haptics.heartLoss();
+          this.pendingHeartLosses = Math.max(0, this.pendingHeartLosses - 1);
+        }, 400);
+      }
       this.store.recordMistake(this.lessonId, this.lesson?.title ?? null, q);
     }
     const ctx = new MascotTriggerContext();
     ctx.isCorrect = ok;
     ctx.isPerfectSession = this.missed.length === 0;
     ctx.attemptCount = this.attempted ? 2 : 1;
-    ctx.remainingHearts = Math.max(0, this.store.hearts - this.pendingHeartLosses);
+    ctx.remainingHearts = this.kids ? Economy.maxHearts : Math.max(0, this.store.hearts - this.pendingHeartLosses);
     ctx.combo = this.combo;
     ctx.maxCombo = this.maxCombo;
     ctx.index = this.solved.length;
@@ -321,17 +396,57 @@ export struct LessonRunner {
     this.answer = '';
     this.phase = 'answering';
     this.attempted = false;
+    this.armSlot();
+  }
+
+  /** 答对到约 60% 时「知识卡现身」：预告完成本课就能收下（已是金卡则不打扰）。 */
+  private maybeTeaseCard(): void {
+    if (this.cardTeased || this.isExam || this.store.cardTier(this.lessonId) >= 3) {
+      return;
+    }
+    if (this.solved.length < Math.max(1, Math.ceil(this.total * 0.6)) || this.solved.length >= this.total) {
+      return;
+    }
+    this.cardTeased = true;
+    setTimeout(() => {
+      this.showCardTease = true;
+      setTimeout(() => {
+        this.showCardTease = false;
+      }, 1800);
+    }, 150);
   }
 
   private proceed(): void {
-    if (!this.isCorrect && this.store.hearts - this.pendingHeartLosses <= 0) {
+    if (!this.kids && !this.isCorrect && this.store.hearts - this.pendingHeartLosses <= 0) {
       this.showOutOfHearts = true;
       return;
     }
     this.advance();
   }
 
+  /** 答对后自动进入下一题（减少点击、保持节奏）；打开了弹层/面板时不自动跳，等手动「继续」。 */
+  private scheduleAutoAdvance(delayMs: number): void {
+    this.cancelAutoAdvance();
+    const idx = this.index;
+    this.autoTimer = setTimeout(() => {
+      this.autoTimer = -1;
+      if (this.index !== idx || this.phase !== 'checked' || !this.isCorrect || this.showReport ||
+        this.showSettings || this.showQuit) {
+        return;
+      }
+      this.proceed();
+    }, delayMs);
+  }
+
+  private cancelAutoAdvance(): void {
+    if (this.autoTimer !== -1) {
+      clearTimeout(this.autoTimer);
+      this.autoTimer = -1;
+    }
+  }
+
   private advance(): void {
+    this.cancelAutoAdvance();
     if (this.isCorrect) {
       SFXEngine.shared.play('progressTick');
     }
@@ -349,12 +464,21 @@ export struct LessonRunner {
     this.isCorrect = false;
     this.phase = 'answering';
     this.attempted = false;
+    if (this.speedState === 'hit') {
+      this.speedState = 'done';
+    }
+    this.armSlot();
     setTimeout(() => this.autoNarrate(), 50);
   }
 
   private finish(l: Lesson): void {
     const correctCount = this.total - this.missed.length;
-    const outcome = this.store.completeLesson(this.lessonId, correctCount, this.total);
+    const extras = new LessonExtras();
+    extras.bookId = this.route.bookId;
+    extras.lessonTitle = l.title;
+    extras.demonQuestionIds = this.demonIds;
+    extras.bonusXp = this.bonusXp;
+    const outcome = this.store.completeLesson(this.lessonId, correctCount, this.total, new Date(), extras);
     Router.shared.replaceTop(AppRoute.resultOf(new LessonRunResult(this.route.bookId, this.lessonId, l.title, this.total,
       correctCount, outcome)));
   }
@@ -397,10 +521,20 @@ export struct LessonRunner {
         .backgroundColor(alpha(C.bee, 0.16))
         .borderRadius(999)
       }
-      Row({ space: 3 }) {
-        DuoIcon({ name: 'heart', sz: 16, color: this.mHearts > 0 ? C.danger : C.inkSofter })
-        Text(`${this.mHearts}`).fontSize(F.body).fontWeight(W.heavy)
-          .fontColor(this.mHearts > 0 ? C.danger : C.inkSofter)
+      if (this.kids) {
+        // 儿童模式：不显示红心，显示本课宝箱状态（有心魔 = 宝箱会被封存）。
+        if (this.demonIds.length > 0) {
+          Text(`👾 ${this.demonIds.length}`).fontSize(F.body).fontWeight(W.heavy).fontColor(C.fox)
+            .accessibilityText(`${this.demonIds.length} 只心魔，下课后收服`)
+        } else {
+          DuoIcon({ name: 'chest', sz: 20, color: C.bee }).accessibilityText('宝箱完好')
+        }
+      } else {
+        Row({ space: 3 }) {
+          DuoIcon({ name: 'heart', sz: 16, color: this.mHearts > 0 ? C.danger : C.inkSofter })
+          Text(`${this.mHearts}`).fontSize(F.body).fontWeight(W.heavy)
+            .fontColor(this.mHearts > 0 ? C.danger : C.inkSofter)
+        }
       }
 
       Stack() {
@@ -512,6 +646,10 @@ export struct LessonRunner {
             .fontColor(this.isCorrect ? C.primary : C.danger)
           if (!this.isCorrect) {
             Text(`正确答案：${renderMathText(q.answer)}`).fontSize(F.caption).fontWeight(W.bold).fontColor(C.danger)
+            if (this.kids) {
+              Text(q.id === this.slots.stretchId ? '踮脚题敢挑战就很棒，不封宝箱！' : '心魔出现了，下课后去收服它就能拿回宝箱')
+                .fontSize(F.micro).fontWeight(W.bold).fontColor(C.inkMuted)
+            }
           } else if (this.bubble.length > 0) {
             Text(this.bubble).fontSize(F.caption).fontWeight(W.bold).fontColor(alpha(C.primary, 0.85))
           }
@@ -573,15 +711,18 @@ export struct LessonRunner {
         this.header()
         Scroll() {
           Column({ space: S.xl }) {
-            Text(instructionText(q.type)).fontSize(F.heading).fontWeight(W.heavy).fontColor(C.ink).width('100%')
-              .margin({ top: 6 })
-            Row({ space: 10 }) {
-              Text(renderMathText(q.question)).fontSize(F.subhead).fontWeight(W.medium).fontColor(C.inkMuted)
-                .lineHeight(26).layoutWeight(1)
-              TTSButton({ path: q.audio?.question })
+            Column({ space: S.m }) {
+              this.slotBanner(q)
+              Text(instructionText(q.type)).fontSize(F.subhead).fontWeight(W.bold).fontColor(C.inkMuted).width('100%')
+              Row({ space: 10 }) {
+                Text(renderMathText(q.question)).fontSize(stemFontSize(q.question)).fontWeight(W.bold).fontColor(C.ink)
+                  .lineHeight(stemFontSize(q.question) * 1.4).layoutWeight(1)
+                TTSButton({ path: q.audio?.question })
+              }
+              .width('100%')
+              .alignItems(VerticalAlign.Top)
             }
-            .width('100%')
-            .alignItems(VerticalAlign.Top)
+            .margin({ top: 6 })
 
             QuestionRenderer({
               question: q, answer: this.answer, phase: this.phase, isCorrect: this.isCorrect,
@@ -612,7 +753,7 @@ export struct LessonRunner {
 
       ForEach(this.floaters, (id: number) => {
         XPFloater({
-          amount: Economy.xpPerCorrect * (this.isExam ? 2 : 1) * (Economy.isWeekend() ? 2 : 1), onDone: () => {
+          amount: this.floatAmount, onDone: () => {
             this.floaters = this.floaters.filter((x: number) => x !== id);
           }
         }).margin({ top: 300 })
@@ -620,10 +761,76 @@ export struct LessonRunner {
       if (this.showCombo) {
         ComboOverlay({ combo: this.comboValue }).margin({ top: 240 })
       }
+      if (this.showCardTease) {
+        this.cardTease()
+      }
       WrongFlash({ trigger: this.flash })
     }
     .width('100%')
     .height('100%')
+  }
+
+  /** 神速 / 踮脚题位横幅。 */
+  @Builder
+  slotBanner(q: Question) {
+    if (this.isSpeedBanner(q)) {
+      Row({ space: 8 }) {
+        DuoIcon({ name: 'bolt', sz: 18, color: '#FFFFFF' })
+        Text(this.speedState === 'hit' ? `神速成功！XP ×2` :
+          (this.speedState === 'expired' ? '时间到啦，慢慢做也没关系' : `神速挑战 · ${LessonSlots.speedSeconds} 秒内答对 XP ×2`))
+          .fontSize(F.caption).fontWeight(W.heavy).fontColor('#FFFFFF').layoutWeight(1)
+        if (this.speedState === 'running') {
+          Text(`${this.speedLeft}s`).fontSize(F.subhead).fontWeight(W.black).fontColor('#FFFFFF')
+        }
+      }
+      .width('100%')
+      .padding({ left: 14, right: 14, top: 10, bottom: 10 })
+      .borderRadius(R.card)
+      .linearGradient({
+        angle: 90,
+        colors: this.speedState === 'expired' ? [[C.inkSofter, 0], [C.inkMuted, 1]] : [[C.bee, 0], [C.fox, 1]]
+      })
+    } else if (q.id === this.slots.stretchId) {
+      Row({ space: 8 }) {
+        Text('🦶').fontSize(F.body)
+        Text('踮脚题 · 难一点点，答错也不会封宝箱').fontSize(F.caption).fontWeight(W.heavy).fontColor(C.beetle)
+          .layoutWeight(1)
+      }
+      .width('100%')
+      .padding({ left: 14, right: 14, top: 10, bottom: 10 })
+      .borderRadius(R.card)
+      .backgroundColor(alpha(C.beetle, 0.12))
+      .border({ width: 1.5, color: alpha(C.beetle, 0.35), radius: R.card })
+    }
+  }
+
+  /** 「知识卡现身」预告（不拦截点击）。 */
+  @Builder
+  cardTease() {
+    Row({ space: 12 }) {
+      Column() {
+        DuoIcon({ name: 'sparkles', sz: 22, color: '#FFFFFF' })
+      }
+      .width(44)
+      .height(58)
+      .justifyContent(FlexAlign.Center)
+      .borderRadius(8)
+      .linearGradient({ angle: 135, colors: [[C.secondary, 0], [C.beetle, 1]] })
+      Column({ space: 2 }) {
+        Text('知识卡现身！').fontSize(F.body).fontWeight(W.heavy).fontColor(C.ink)
+        Text(this.store.cardTier(this.lessonId) > 0 ? '全对通关可以升级这张卡' : '完成这一课就能收下它')
+          .fontSize(F.caption).fontWeight(W.bold).fontColor(C.inkMuted)
+      }
+      .alignItems(HorizontalAlign.Start)
+    }
+    .padding({ left: 12, right: 18, top: 10, bottom: 10 })
+    .backgroundColor(C.surface)
+    .borderRadius(R.card)
+    .border({ width: 2, color: alpha(C.beetle, 0.5), radius: R.card })
+    .shadow({ radius: 12, color: alpha(C.beetle, 0.25), offsetY: 4 })
+    .margin({ top: 64 })
+    .hitTestBehavior(HitTestMode.None)
+    .transition(TransitionEffect.OPACITY.combine(TransitionEffect.translate({ y: -20 })))
   }
 
   @Builder
@@ -703,6 +910,7 @@ export struct LessonRunner {
         this.store.clearLessonSession();
         this.pendingResume = null;
         this.autoNarrate();
+        this.armSlot();
       } })
     }
   }
@@ -716,6 +924,7 @@ export struct LessonRunner {
             this.store.markIntroSeen(this.lessonId);
             this.showIntro = false;
             this.autoNarrate();
+            this.armSlot();
           },
           onExit: () => Router.shared.pop()
         })
