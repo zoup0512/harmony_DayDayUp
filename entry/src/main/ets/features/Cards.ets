@@ -10,7 +10,7 @@ import { ProgressStore } from '../stores/ProgressStore';
 import { DataLoader } from '../services/DataLoader';
 import { Haptics } from '../services/Feedback';
 import { SFXEngine } from '../services/Audio';
-import { CardBox, ChunkyButton, DuoIcon, ModalCard, Pill, ProgressBar, TitleBar } from '../components/Kit';
+import { ChunkyButton, DuoIcon, ModalCard, Pill, ProgressBar } from '../components/Kit';
 import { activeBook } from './Books';
 import { Router } from './Router';
 
@@ -38,11 +38,16 @@ export struct KnowledgeCardView {
 
   build() {
     Stack({ alignContent: Alignment.TopStart }) {
-      Column({ space: this.large ? 12 : 6 }) {
-        Row().width('100%').height(this.large ? 8 : 5)
-          .backgroundColor(this.tier > 0 ? CardTier.color(this.tier) : C.border)
+      Column({ space: this.large ? 12 : 4 }) {
+        Row({ space: 3 }) {
+          DuoIcon({ name: this.tier > 0 ? 'star' : 'lock', sz: this.large ? 14 : 10,
+            color: this.tier > 0 ? CardTier.color(this.tier) : C.inkMuted })
+          Text(this.tier > 0 ? CardTier.label(this.tier) : '未收集')
+            .fontSize(this.large ? F.caption : F.micro).fontWeight(W.bold).fontColor(C.inkMuted)
+        }
+        Blank().layoutWeight(1)
         Stack() {
-          Circle().width(this.large ? 96 : 46).height(this.large ? 96 : 46)
+          Circle().width(this.large ? 96 : 38).height(this.large ? 96 : 38)
             .fill(this.tier > 0 ? alpha(CardTier.color(this.tier), 0.22) : alpha(C.inkSofter, 0.16))
           if (this.tier > 0) {
             Text(this.glyph()).fontSize(this.large ? 46 : 22).fontWeight(W.black).fontColor(CardTier.color(this.tier))
@@ -50,7 +55,7 @@ export struct KnowledgeCardView {
             DuoIcon({ name: 'lock', sz: this.large ? 34 : 18, color: C.inkSofter })
           }
         }
-        .margin({ top: this.large ? 10 : 4 })
+        Blank().layoutWeight(1)
 
         Text(this.tier > 0 ? this.title : '???')
           .fontSize(this.large ? F.heading : F.micro)
@@ -60,20 +65,21 @@ export struct KnowledgeCardView {
           .textOverflow({ overflow: TextOverflow.Ellipsis })
           .textAlign(TextAlign.Center)
           .padding({ left: 6, right: 6 })
-        Row({ space: 2 }) {
-          ForEach(this.stars(), (i: number) => {
-            DuoIcon({ name: i < this.tier ? 'star' : 'starOutline', sz: this.large ? 18 : 10,
-              color: i < this.tier ? CardTier.color(this.tier) : C.inkSofter })
-          }, (i: number) => `${i}`)
-        }
         if (this.large) {
-          Text(this.tier > 0 ? `${CardTier.label(this.tier)} · ${this.caption}` : this.caption)
+          Row({ space: 2 }) {
+            ForEach(this.stars(), (i: number) => {
+              DuoIcon({ name: i < this.tier ? 'star' : 'starOutline', sz: 18,
+                color: i < this.tier ? CardTier.color(this.tier) : C.inkSofter })
+            }, (i: number) => `${i}`)
+          }
+          Text(this.caption)
             .fontSize(F.caption).fontWeight(W.bold).fontColor(C.inkMuted).maxLines(1)
             .textOverflow({ overflow: TextOverflow.Ellipsis }).padding({ left: 10, right: 10 })
         }
       }
       .width('100%')
       .height('100%')
+      .padding({ top: this.large ? 15 : 7, bottom: this.large ? 16 : 7 })
       .alignItems(HorizontalAlign.Center)
 
       if (this.badge.length > 0) {
@@ -83,8 +89,8 @@ export struct KnowledgeCardView {
       }
     }
     .width(this.large ? 220 : '100%')
-    .height(this.large ? 300 : 132)
-    .backgroundColor(this.tier > 0 ? CardTier.tint(this.tier) : C.surfaceAlt)
+    .aspectRatio(11 / 15)
+    .backgroundColor(this.tier > 0 ? (C.dark ? alpha(CardTier.color(this.tier), 0.15) : CardTier.tint(this.tier)) : C.surfaceAlt)
     .borderRadius(R.card)
     .border({ width: 2, color: this.tier > 0 ? alpha(CardTier.color(this.tier), 0.6) : C.border, radius: R.card })
     .clip(true)
@@ -449,7 +455,17 @@ export struct CardAlbumPage {
   build() {
     Stack() {
       Column() {
-        TitleBar({ title: '知识卡册', onBack: () => Router.shared.pop() })
+        Row({ space: 8 }) {
+          Stack() {
+            DuoIcon({ name: 'chevronLeft', sz: 20, color: C.ink })
+          }
+          .width(44).height(44).onClick(() => {
+            Haptics.tap();
+            Router.shared.pop();
+          }).accessibilityText('返回')
+          Text('知识卡册').fontSize(F.heading).fontWeight(W.heavy).fontColor(C.ink)
+        }
+        .width('100%').height(52).padding({ left: 10 }).backgroundColor(C.studyHeader)
         ForEach([this.rev], (r: number) => {
           Scroll() {
             Column({ space: S.xl }) {
@@ -462,26 +478,32 @@ export struct CardAlbumPage {
                 .width('100%')
                 .margin({ top: 80 })
               } else {
-                CardBox() {
-                  Column({ space: 10 }) {
-                    Text(this.book?.fullName ?? '').fontSize(F.caption).fontWeight(W.bold).fontColor(C.inkMuted)
-                      .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
-                    Row({ space: 10 }) {
-                      Text(`${this.ownedCards}`).fontSize(F.display).fontWeight(W.black).fontColor(C.secondary)
-                      Text(`/ ${this.totalCards} 张知识卡`).fontSize(F.body).fontWeight(W.bold).fontColor(C.inkMuted)
+                Column({ space: 8 }) {
+                  Row({ space: 8 }) {
+                    Column({ space: 4 }) {
+                      Text(this.book?.fullName ?? '').fontSize(F.caption).fontWeight(W.bold).fontColor(C.inkMuted)
+                        .maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
+                      Row({ space: 8 }) {
+                        Text(`${this.ownedCards}`).fontSize(F.display).fontWeight(W.black).fontColor(C.ink)
+                        Text(`/ ${this.totalCards} 张知识卡`).fontSize(F.caption).fontWeight(W.bold).fontColor(C.inkMuted)
+                      }
+                      .alignItems(VerticalAlign.Bottom)
                     }
-                    .alignItems(VerticalAlign.Bottom)
-                    ProgressBar({ progress: this.ownedCards / Math.max(1, this.totalCards), barHeight: 12 })
-                    Row({ space: 8 }) {
-                      Pill(`金卡 ${this.goldCards}`, '#FFFFFF', CardTier.color(3))
-                      Pill(`守护兽 ${this.guardiansUnlocked}/${this.units.length}`, '#FFFFFF', C.beetle)
-                    }
-                    Text('每学完一课得一张知识卡：1 星铜卡、2 星银卡、3 星金卡。集齐一个单元，守护兽就会现身！')
-                      .fontSize(F.micro).fontColor(C.inkMuted).lineHeight(17)
+                    .alignItems(HorizontalAlign.Start).layoutWeight(1)
+                    Image($r('app.media.learning_cards')).width(76).height(64).objectFit(ImageFit.Contain)
                   }
-                  .alignItems(HorizontalAlign.Start)
                   .width('100%')
+                  ProgressBar({ progress: this.ownedCards / Math.max(1, this.totalCards), barHeight: 7 })
+                  Row({ space: 8 }) {
+                    Pill(`金卡 ${this.goldCards}`, C.ink, alpha(C.bee, 0.23))
+                    Pill(`守护兽 ${this.guardiansUnlocked}/${this.units.length}`, C.ink, alpha(C.primary, 0.15))
+                  }
                 }
+                .alignItems(HorizontalAlign.Start).width('100%').padding(14)
+                .backgroundColor(C.rewardSurface).borderRadius(R.card)
+                .border({ width: 1, color: C.rewardBorder, radius: R.card })
+                Text('每学完一课得一张知识卡。1 星铜卡、2 星银卡、3 星金卡。')
+                  .fontSize(F.micro).fontColor(C.inkMuted).lineHeight(17).width('100%')
 
                 ForEach(this.units, (u: UnitSet) => {
                   this.unitSection(u)

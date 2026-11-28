@@ -14,7 +14,7 @@ type CardState = 'default' | 'selected' | 'correct' | 'wrong' | 'disabled';
 function cardBorder(s: CardState): string {
   switch (s) {
     case 'selected':
-      return C.secondary;
+      return C.primary;
     case 'correct':
       return C.primary;
     case 'wrong':
@@ -22,14 +22,14 @@ function cardBorder(s: CardState): string {
     case 'disabled':
       return alpha(C.surfaceAlt, 0.5);
     default:
-      return C.surfaceAlt;
+      return C.border;
   }
 }
 
 function cardFill(s: CardState): string {
   switch (s) {
     case 'selected':
-      return alpha(C.secondary, 0.18);
+      return alpha(C.primary, 0.12);
     case 'correct':
       return alpha(C.primary, 0.22);
     case 'wrong':
@@ -44,9 +44,8 @@ function cardFill(s: CardState): string {
 function cardInk(s: CardState): string {
   switch (s) {
     case 'selected':
-      return C.secondary;
     case 'correct':
-      return C.primary;
+      return C.dark ? C.primary : C.ink;
     case 'wrong':
       return C.danger;
     case 'disabled':
@@ -59,7 +58,6 @@ function cardInk(s: CardState): string {
 function cardLedge(s: CardState): string {
   switch (s) {
     case 'selected':
-      return C.secondaryDark;
     case 'correct':
       return C.primaryDark;
     case 'wrong':
@@ -143,6 +141,7 @@ struct OptionCard {
   @Param state: CardState = 'default';
   @Param tall: boolean = false;
   @Param grid: boolean = false;
+  @Param optionLetter: string = '';
   @Param icon: string = '';
   @Param shake: number = 0;
   @Event onTap: () => void = () => {
@@ -196,6 +195,8 @@ struct OptionCard {
               .width('100%')
               .height('100%')
               .padding({ left: 10, right: 10 })
+            Text(this.optionLetter).fontSize(F.micro).fontWeight(W.bold).fontColor(C.inkMuted)
+              .position({ x: 9, y: 6 })
             if (this.state === 'correct') {
               DuoIcon({ name: 'checkCircle', sz: 20, color: C.primary }).margin({ top: 6, right: 6 })
             } else if (this.state === 'wrong') {
@@ -314,6 +315,7 @@ struct ChoiceQuestion {
   card(i: number, grid: boolean) {
     OptionCard({
       label: renderMathText(this.options[i]),
+      optionLetter: String.fromCharCode(65 + i),
       state: this.stateFor(i),
       grid: grid,
       shake: this.stateFor(i) === 'wrong' ? this.shake : 0,

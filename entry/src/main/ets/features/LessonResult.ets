@@ -73,7 +73,7 @@ export struct LessonResultPage {
   sealedBox() {
     Column({ space: 12 }) {
       Row({ space: 10 }) {
-        DuoIcon({ name: 'chest', sz: 34, color: C.inkSofter })
+        Image($r('app.media.learning_chest')).width(80).height(67).objectFit(ImageFit.Contain)
         Column({ space: 2 }) {
           Text('宝箱被心魔封住了').fontSize(F.subhead).fontWeight(W.heavy).fontColor(C.ink)
           Text(`👾 ${this.result?.outcome.demonCount ?? 0} 只心魔待收服`).fontSize(F.caption).fontWeight(W.bold)
@@ -88,16 +88,16 @@ export struct LessonResultPage {
         `${(this.result?.outcome.cardTier ?? 0) > 0 ? ` + ${CardTier.label(this.result?.outcome.cardTier ?? 1)}「${this.result?.lessonTitle ?? ''}」` : ''}` +
         `，每只心魔再奖 ${Remedy.bonusGemsPerDemon} 宝石。经验已经到账啦！`)
         .fontSize(F.caption).fontColor(C.inkMuted).lineHeight(19)
-      ChunkyButton({ label: '去收服心魔', variant: 'secondary', icon: 'sparkles', onTap: () => {
+      ChunkyButton({ label: '去收服心魔', variant: 'reward', onTap: () => {
         Haptics.tap();
         Router.shared.replaceTop(AppRoute.remedy(this.result?.outcome.sealedChestId ?? ''));
       } })
     }
     .padding(16)
     .margin({ left: 20, right: 20 })
-    .backgroundColor(alpha(C.fox, 0.08))
+    .backgroundColor(C.rewardSurface)
     .borderRadius(R.card)
-    .border({ width: 2, color: alpha(C.fox, 0.35), radius: R.card })
+    .border({ width: 1, color: C.rewardBorder, radius: R.card })
   }
 
   build() {
@@ -106,11 +106,13 @@ export struct LessonResultPage {
         Scroll() {
           Column({ space: S.xl }) {
             Column({ space: 10 }) {
-              Mascot({ mood: this.acc() >= 0.8 ? 'cheer' : 'happy', sz: 130, reactTo: 'levelup' })
+              Mascot({ mood: this.acc() >= 0.8 ? 'cheer' : 'happy', illustrated: true, sz: 115, reactTo: 'levelup' })
               StarReveal({ earned: this.result?.outcome.stars ?? 1 })
-              Text(this.result?.lessonTitle ?? '').fontSize(F.subhead).fontWeight(W.bold).fontColor(C.inkMuted)
+              Text(this.result?.lessonTitle ?? '').fontSize(F.heading).fontWeight(W.heavy).fontColor(C.ink)
+              Text(`${this.result?.correctCount ?? 0} / ${this.result?.questionCount ?? 0} 题首次答对`)
+                .fontSize(F.caption).fontColor(C.inkMuted)
             }
-            .margin({ top: 24 })
+            .margin({ top: 12 })
 
             Row({ space: 6 }) {
               this.stat('bolt', C.secondary, `+${this.result?.outcome.xpGained ?? 0}`, '经验')
@@ -131,7 +133,16 @@ export struct LessonResultPage {
                   title: this.result?.lessonTitle ?? '', caption: '已收进知识卡册',
                   tier: this.result?.outcome.cardTier ?? 1, badge: this.result?.outcome.cardNew ? 'NEW' : '升级'
                 })
+                ChunkyButton({ label: '查看知识卡册', variant: 'reward', onTap: () => {
+                  Haptics.tap();
+                  Router.shared.push(new AppRoute('cards'));
+                } })
               }
+              .padding(16)
+              .margin({ left: 20, right: 20 })
+              .backgroundColor(C.rewardSurface)
+              .borderRadius(R.card)
+              .border({ width: 1, color: C.rewardBorder, radius: R.card })
             } else if ((this.result?.outcome.cardTier ?? 0) > 0) {
               Text(`这张知识卡已收藏（${CardTier.label(this.store.cardTier(this.result?.lessonId ?? ''))}）`)
                 .fontSize(F.caption).fontWeight(W.bold).fontColor(C.inkMuted)
@@ -205,7 +216,7 @@ export struct LessonResultPage {
 
         Column({ space: 12 }) {
           ShareCardButton({
-            label: '分享成绩', filename: `result-${this.result?.lessonId ?? 'x'}`,
+            label: '分享成绩', fullWidth: true, filename: `result-${this.result?.lessonId ?? 'x'}`,
             badge: new BadgeData('star', C.bee, '又过一课！', this.result?.lessonTitle ?? '',
               `${this.result?.outcome.stars ?? 0} 星 · ${Math.round(this.acc() * 100)}% 正确率`)
           })

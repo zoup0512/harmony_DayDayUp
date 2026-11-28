@@ -263,7 +263,9 @@ export struct RemedyPage {
 
       Text('心魔试炼').fontSize(F.title).fontWeight(W.heavy).fontColor(C.ink).layoutWeight(1)
       if (this.stage === 'quiz' || this.stage === 'subdued') {
-        Pill(`已收服 ${this.subduedCount}/${this.demons.length}`, C.ink, C.surface)
+        Text(`已收服 ${this.subduedCount}/${this.demons.length}`).fontSize(F.micro).fontWeight(W.bold)
+          .fontColor(C.ink).padding({ left: 9, right: 9, top: 4, bottom: 4 })
+          .backgroundColor(C.surface).borderRadius(999)
       }
     }
     .width('100%')

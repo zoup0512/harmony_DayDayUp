@@ -174,7 +174,7 @@ export struct DuoIcon {
   }
 }
 
-export type ChunkyVariant = 'primary' | 'secondary' | 'danger' | 'ghost' | 'disabled';
+export type ChunkyVariant = 'primary' | 'secondary' | 'reward' | 'danger' | 'ghost' | 'disabled';
 
 /** 3D 「厚底」大按钮（ChunkyButtonStyle）：按下时表面下沉 4vp 贴合底座。 */
 @ComponentV2
@@ -192,6 +192,8 @@ export struct ChunkyButton {
         return C.primary;
       case 'secondary':
         return C.secondary;
+      case 'reward':
+        return C.dark ? '#735C31' : '#FFE194';
       case 'danger':
         return C.danger;
       case 'ghost':
@@ -203,6 +205,10 @@ export struct ChunkyButton {
 
   private fgColor(): string {
     switch (this.variant) {
+      case 'primary':
+        return C.theme === null ? '#163C1A' : '#FFFFFF';
+      case 'reward':
+        return C.dark ? '#FFF3CC' : '#704810';
       case 'ghost':
         return C.inkLight;
       case 'disabled':
@@ -218,6 +224,8 @@ export struct ChunkyButton {
         return C.primaryDark;
       case 'secondary':
         return C.secondaryDark;
+      case 'reward':
+        return C.rewardBorder;
       case 'danger':
         return C.dangerDark;
       case 'ghost':
@@ -293,22 +301,24 @@ export struct SmallChunkyButton {
         .height(36)
         .width('100%')
         .borderRadius(R.control)
-        .backgroundColor(this.pressed ? this.bgColor : this.shadowColor)
+        .backgroundColor(this.active ? (this.pressed ? this.bgColor : this.shadowColor) : C.border)
         .margin({ top: 3 })
       Row({ space: 5 }) {
         if (this.icon.length > 0) {
-          DuoIcon({ name: this.icon, sz: 13, color: '#FFFFFF' })
+          DuoIcon({ name: this.icon, sz: 13, color: this.active ? '#FFFFFF' : C.inkMuted })
         }
-        Text(this.label).fontSize(F.caption).fontWeight(W.heavy).fontColor('#FFFFFF').maxLines(1)
+        Text(this.label).fontSize(F.caption).fontWeight(W.heavy).fontColor(this.active ? '#FFFFFF' : C.inkMuted).maxLines(1)
       }
+      .width('100%')
       .height(36)
-      .padding({ left: 12, right: 12 })
+      .justifyContent(FlexAlign.Center)
+      .padding({ left: 5, right: 5 })
       .borderRadius(R.control)
-      .backgroundColor(this.bgColor)
+      .backgroundColor(this.active ? this.bgColor : C.surfaceAlt)
       .translate({ y: this.pressed ? 3 : 0 })
     }
     .height(39)
-    .opacity(this.active ? 1 : 0.6)
+    .enabled(this.active)
     .onTouch((e: TouchEvent) => {
       if (e.type === TouchType.Down) {
         this.pressed = true;

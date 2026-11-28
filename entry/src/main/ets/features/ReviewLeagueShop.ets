@@ -606,6 +606,7 @@ export struct ShopTab {
           } }).width(80)
       } else {
         SmallChunkyButton({ label: `${item.cost}`, icon: 'gem',
+          active: this.store.gems >= item.cost,
           bgColor: this.store.gems >= item.cost ? C.primary : C.inkMuted,
           shadowColor: this.store.gems >= item.cost ? C.primaryDark : C.inkSofter,
           onTap: () => {

@@ -3,7 +3,7 @@ import { image } from '@kit.ImageKit';
 import { systemShare } from '@kit.ShareKit';
 import { uniformTypeDescriptor as utd } from '@kit.ArkData';
 import { fileUri } from '@kit.CoreFileKit';
-import { C, F, W, alpha } from '../design/Theme';
+import { C, F, R, W, alpha } from '../design/Theme';
 import { weekdayLabel } from '../domain/Dates';
 import { AppEnv, Files } from '../services/Files';
 import { DuoIcon } from './Kit';
@@ -43,6 +43,7 @@ export class StreakShareData {
 /** 「分享」胶囊按钮：点击时渲染卡片并调起系统分享。 */
 @ComponentV2
 export struct ShareCardButton {
+  @Param fullWidth: boolean = false;
   @Param label: string = '分享';
   @Param filename: string = 'share';
   @Param badge: BadgeData | undefined = undefined;
@@ -152,9 +153,12 @@ export struct ShareCardButton {
       Text(this.label).fontSize(F.caption).fontWeight(W.bold).fontColor(C.primary)
     }
     .padding({ left: 16, right: 16, top: 9, bottom: 9 })
-    .backgroundColor(alpha(C.primary, 0.12))
-    .borderRadius(999)
-    .border({ width: 2, color: alpha(C.primary, 0.4), radius: 999 })
+    .width(this.fullWidth ? '100%' : undefined)
+    .justifyContent(FlexAlign.Center)
+    .backgroundColor(this.fullWidth ? C.surface : alpha(C.primary, 0.12))
+    .borderRadius(this.fullWidth ? R.control : 999)
+    .border({ width: this.fullWidth ? 1 : 2, color: this.fullWidth ? C.border : alpha(C.primary, 0.4),
+      radius: this.fullWidth ? R.control : 999 })
     .onClick(() => {
       this.share();
     })

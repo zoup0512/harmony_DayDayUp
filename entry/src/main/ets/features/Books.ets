@@ -72,6 +72,24 @@ function gradeLabel(g: number): string {
   return g >= 0 && g < GRADE_NAMES.length ? GRADE_NAMES[g] : `${g}年级`;
 }
 
+@ComponentV2
+struct ResourceBadge {
+  @Param icon: string = '';
+  @Param label: string = '';
+  @Param tint: string = C.inkMuted;
+
+  build() {
+    Row({ space: 4 }) {
+      DuoIcon({ name: this.icon, sz: 16, color: this.tint })
+      Text(this.label).fontSize(F.caption).fontWeight(W.heavy).fontColor(C.ink)
+    }
+    .padding({ left: 7, right: 7, top: 5, bottom: 5 })
+    .backgroundColor(C.surface)
+    .borderRadius(10)
+    .shadow({ radius: 1, color: alpha(C.primaryDark, 0.32), offsetY: 2 })
+  }
+}
+
 /** 学习 Tab：顶部状态条 + 课本/路径地图。 */
 @ComponentV2
 export struct LearnHome {
@@ -142,27 +160,15 @@ export struct LearnHome {
   }
 
   @Builder
-  resourceBadge(icon: string, label: string, tint: string) {
-    Row({ space: 4 }) {
-      DuoIcon({ name: icon, sz: 16, color: tint })
-      Text(label).fontSize(F.caption).fontWeight(W.heavy).fontColor(C.ink)
-    }
-    .padding({ left: 7, right: 7, top: 5, bottom: 5 })
-    .backgroundColor(C.surface)
-    .borderRadius(10)
-    .shadow({ radius: 1, color: alpha(C.primaryDark, 0.32), offsetY: 2 })
-  }
-
-  @Builder
   topBar() {
     Row({ space: 6 }) {
       Scroll() {
         Row({ space: 6 }) {
-          this.resourceBadge('flame', `${this.mStreak} 天`, this.mStreak > 0 ? C.fox : C.inkSofter)
-          this.resourceBadge('gem', `${this.mGems}`, C.beetle)
+          ResourceBadge({ icon: 'flame', label: `${this.mStreak} 天`, tint: this.mStreak > 0 ? C.fox : C.inkSofter })
+          ResourceBadge({ icon: 'gem', label: `${this.mGems}`, tint: C.beetle })
           if (this.mKids) {
             Row() {
-              this.resourceBadge('books', `${this.mCards}`, C.secondary)
+              ResourceBadge({ icon: 'books', label: `${this.mCards}`, tint: C.secondary })
             }
             .onClick(() => {
               Haptics.tap();
@@ -171,7 +177,7 @@ export struct LearnHome {
             .accessibilityText(`知识卡册，已收集 ${this.mCards} 张`)
             if (this.mDemons > 0) {
               Row() {
-                this.resourceBadge('lock', `${this.mDemons}`, C.fox)
+                ResourceBadge({ icon: 'lock', label: `${this.mDemons}`, tint: C.fox })
               }
               .onClick(() => {
                 const first = this.store.sealedChests[0];
@@ -183,7 +189,7 @@ export struct LearnHome {
               .accessibilityText(`${this.mDemons} 只心魔待收服`)
             }
           } else {
-            this.resourceBadge('heart', `${this.mHearts}`, this.mHearts > 0 ? C.danger : C.inkSofter)
+            ResourceBadge({ icon: 'heart', label: `${this.mHearts}`, tint: this.mHearts > 0 ? C.danger : C.inkSofter })
           }
         }
         .padding({ bottom: 3 })

@@ -136,6 +136,11 @@ export struct LessonRunner {
     return Math.max(1, this.lesson?.questions.length ?? 1);
   }
 
+  private questionNumber(q: Question): number {
+    const order = this.slots.arrange(this.lesson?.questions ?? []);
+    return order.findIndex((item: Question) => item.id === q.id) + 1;
+  }
+
   private get isExam(): boolean {
     return Economy.isExamLessonId(this.lessonId);
   }
@@ -527,7 +532,8 @@ export struct LessonRunner {
           Text(`👾 ${this.demonIds.length}`).fontSize(F.body).fontWeight(W.heavy).fontColor(C.fox)
             .accessibilityText(`${this.demonIds.length} 只心魔，下课后收服`)
         } else {
-          DuoIcon({ name: 'chest', sz: 20, color: C.bee }).accessibilityText('宝箱完好')
+          Image($r('app.media.learning_chest')).width(28).height(25).objectFit(ImageFit.Contain)
+            .accessibilityText('宝箱完好')
         }
       } else {
         Row({ space: 3 }) {
@@ -713,7 +719,13 @@ export struct LessonRunner {
           Column({ space: S.xl }) {
             Column({ space: S.m }) {
               this.slotBanner(q)
-              Text(instructionText(q.type)).fontSize(F.subhead).fontWeight(W.bold).fontColor(C.inkMuted).width('100%')
+              Row({ space: 8 }) {
+                Text(instructionText(q.type)).fontSize(F.subhead).fontWeight(W.heavy).fontColor(C.ink).layoutWeight(1)
+                Text(`第 ${this.questionNumber(q)} / ${this.total} 题`)
+                  .fontSize(F.micro).fontWeight(W.bold).fontColor(C.inkMuted)
+                  .padding({ left: 9, right: 9, top: 4, bottom: 4 }).backgroundColor(C.surfaceAlt).borderRadius(16)
+              }
+              .width('100%')
               Row({ space: 10 }) {
                 Text(renderMathText(q.question)).fontSize(stemFontSize(q.question)).fontWeight(W.bold).fontColor(C.ink)
                   .lineHeight(stemFontSize(q.question) * 1.4).layoutWeight(1)
@@ -724,6 +736,13 @@ export struct LessonRunner {
             }
             .margin({ top: 6 })
 
+            if (this.lessonId === 'g1up-u1-kp2' && q.type === 'choice' &&
+              q.question.trim() === '桌上有3个杯子和3个盖子，杯子和盖子的数量关系是？') {
+              Image($r('app.media.lesson_cup_pairs')).width('100%').height(130).objectFit(ImageFit.Contain)
+                .backgroundColor(C.dark ? C.rewardSurface : '#FBF9E8').borderRadius(R.card)
+                .border({ width: 1, color: C.rewardBorder, radius: R.card }).clip(true)
+                .accessibilityText('三个盖子和三个杯子，上下各成一对')
+            }
             QuestionRenderer({
               question: q, answer: this.answer, phase: this.phase, isCorrect: this.isCorrect,
               qKey: `${q.id}-${this.index}`, onAnswer: (a: string) => {
