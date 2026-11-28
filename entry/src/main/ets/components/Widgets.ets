@@ -6,7 +6,7 @@ import { Quest } from '../domain/Seeded';
 import { PassageSentence } from '../models/Types';
 import { DayXp, ProgressStore } from '../stores/ProgressStore';
 import { SettingsStore } from '../stores/SettingsStore';
-import { AssetDownloader } from '../services/AssetDownloader';
+import { AssetDownloader, BookDownloadState } from '../services/AssetDownloader';
 import { AudioPlayer, SFXEngine } from '../services/Audio';
 import { Haptics } from '../services/Feedback';
 import { ChunkyButton, DuoIcon, IconBadge, ProgressBar, SmallChunkyButton } from './Kit';
@@ -337,62 +337,94 @@ export struct WeeklyReportCard {
 @ComponentV2
 export struct BookDownloadCard {
   @Param bookId: string = '';
-  @Event onComplete: () => void = () => {
+  private dl: AssetDownloader = AssetDownloader.shared;
+  @Local download: BookDownloadState = new BookDownloadState();
+  private unsubscribe: () => void = () => {
   };
-  dl: AssetDownloader = AssetDownloader.shared;
+
+  aboutToAppear(): void {
+    this.syncBook();
+    this.unsubscribe = this.dl.onBookChange((id: string): void => {
+      if (id === this.bookId) {
+        this.syncBook();
+      }
+    });
+  }
+
+  aboutToDisappear(): void {
+    this.unsubscribe();
+  }
+
+  @Monitor('bookId')
+  syncBook(): void {
+    this.download = this.dl.stateFor(this.bookId);
+  }
+
+  private title(): string {
+    switch (this.download.phase) {
+      case 'preparing': return '正在准备下载';
+      case 'lessons': return '正在下载课程';
+      case 'audio': return '正在下载音频';
+      case 'complete': return '课本已下载';
+      default: return '下载课本内容';
+    }
+  }
+
+  private subtitle(): string {
+    if (this.download.phase === 'lessons') {
+      return `已下载 ${this.download.completed} / ${this.download.total} 课`;
+    }
+    if (this.download.phase === 'audio') {
+      return `已处理 ${this.download.completed} / ${this.download.total} 段音频`;
+    }
+    const lessons = this.dl.entry(this.bookId).lessonsCount;
+    return lessons > 0 ? `含课程与音频 · ${lessons} 课` : '含课程与音频';
+  }
+
+  private startDownload(): void {
+    const id = this.bookId;
+    if (id.length === 0 || this.dl.stateFor(id).active) {
+      return;
+    }
+    this.dl.ensureBookDownloaded(id).then((): void => {
+      Haptics.success();
+    }).catch((): void => {
+      // 下载器已将失败原因发布给这本书的卡片。
+    });
+  }
 
   build() {
     Column({ space: 14 }) {
       Row({ space: 12 }) {
-        DuoIcon({ name: 'downloadCircle', sz: 30, color: C.secondary })
+        if (this.download.active) {
+          LoadingProgress().width(30).height(30).color(C.secondary)
+        } else {
+          DuoIcon({ name: this.download.phase === 'complete' ? 'checkCircle' : 'downloadCircle', sz: 30, color: C.secondary })
+        }
         Column({ space: 2 }) {
-          Text('下载课本内容').fontSize(F.subhead).fontWeight(W.bold).fontColor(C.ink)
-          Text(`含课程与音频 · ${this.dl.entry(this.bookId).lessonsCount} 课`)
-            .fontSize(F.caption).fontWeight(W.bold).fontColor(C.inkMuted)
+          Text(this.title()).fontSize(F.subhead).fontWeight(W.bold).fontColor(C.ink)
+          Text(this.subtitle()).fontSize(F.caption).fontColor(C.inkMuted)
         }
         .alignItems(HorizontalAlign.Start)
         .layoutWeight(1)
       }
       .width('100%')
 
-      if (this.dl.inFlight.has(this.bookId)) {
-        Column({ space: 6 }) {
-          ProgressBar({
-            progress: this.dl.bookProgress.get(this.bookId) ?? 0,
-            barHeight: 12,
-            fillColor: C.secondary,
-            trackColor: C.bgSofter
-          })
-          Row() {
-            Text((this.dl.bookProgress.get(this.bookId) ?? 0) < 0.35 ? '正在下载课程…' : '正在下载音频…')
-              .fontSize(F.caption).fontWeight(W.bold).fontColor(C.inkMuted).layoutWeight(1)
-            Text(`${Math.floor((this.dl.bookProgress.get(this.bookId) ?? 0) * 100)}%`)
-              .fontSize(F.caption).fontWeight(W.heavy).fontColor(C.secondary)
-          }
-          .width('100%')
+      if (this.download.active) {
+        Row({ space: 10 }) {
+          Progress({ value: this.download.percent, total: 100, type: ProgressType.Linear })
+            .layoutWeight(1).style({ strokeWidth: 10 }).color(C.secondary).backgroundColor(C.bgSofter)
+            .accessibilityText(`课本下载进度 ${this.download.percent}%`)
+          Text(`${this.download.percent}%`).fontSize(F.caption).fontWeight(W.heavy).fontColor(C.ink)
         }
         .width('100%')
-      } else if (this.dl.lastError !== null) {
-        Text(this.dl.lastError).fontSize(F.caption).fontColor(C.danger).width('100%')
-      }
-
-      ChunkyButton({
-        label: this.dl.inFlight.has(this.bookId) ? '下载中…' : (this.dl.lastError !== null ? '重试下载' : '下载课本'),
-        variant: this.dl.inFlight.has(this.bookId) ? 'disabled' : 'secondary',
-        onTap: () => {
-          const id = this.bookId;
-          if (id.length === 0) {
-            return;
-          }
-          this.dl.ensureBookDownloaded(id).then(() => {
-            if (this.dl.isBookDownloaded(id)) {
-              Haptics.success();
-              this.onComplete();
-            }
-          }).catch(() => {
-          });
+      } else if (this.download.phase !== 'complete') {
+        if (this.download.phase === 'failed') {
+          Text(this.download.error).fontSize(F.caption).fontColor(C.danger).width('100%')
         }
-      })
+        ChunkyButton({ label: this.download.phase === 'failed' ? '重试下载' : '下载课本',
+          variant: 'secondary', onTap: () => this.startDownload() })
+      }
     }
     .padding(16)
     .width('100%')

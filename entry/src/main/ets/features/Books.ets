@@ -62,6 +62,22 @@ export function bookInstalled(bookId: string): boolean {
   return Files.exists(`${DataLoader.bookDir(bookId)}/outline.json`);
 }
 
+// 课程文件先于音频落盘。下载中保持卡片，结束时才重新加载课程目录和学习路径。
+function availableOutline(bookId: string): Outline | null {
+  const state = AssetDownloader.shared.stateFor(bookId);
+  return state.active || state.phase === 'failed' ? null : DataLoader.tryOutline(bookId);
+}
+
+function onBookAvailabilityChange(listener: (bookId: string) => void): () => void {
+  const downloader = AssetDownloader.shared;
+  return downloader.onBookChange((bookId: string): void => {
+    const state = downloader.stateFor(bookId);
+    if ((state.phase === 'preparing' && state.completed === 0) || state.phase === 'complete' || state.phase === 'failed') {
+      listener(bookId);
+    }
+  });
+}
+
 export function allGrades(books: Book[]): number[] {
   const set = new Set<number>();
   books.forEach((b: Book) => set.add(b.grade));
@@ -96,10 +112,8 @@ struct ResourceBadge {
 @ComponentV2
 export struct LearnHome {
   @Local store: ProgressStore = ProgressStore.shared;
-  dl: AssetDownloader = AssetDownloader.shared;
   @Local nodes: PathMapNode[] = [];
   @Local book: Book | null = null;
-  @Local outlineData: Outline | null = null;
   @Local chestId: string = '';
   @Local showSwitch: boolean = false;
   @Local mStreak: number = 0;
@@ -117,6 +131,8 @@ export struct LearnHome {
   private unsubSettings: () => void = () => {
   };
   private unsubLearners: () => void = () => {
+  };
+  private unsubDownloads: () => void = () => {
   };
 
   private syncLearner(): void {
@@ -141,12 +157,11 @@ export struct LearnHome {
       this.nodes = [];
       return;
     }
-    this.outlineData = DataLoader.tryOutline(b.id);
-    if (this.outlineData === null) {
+    const o = availableOutline(b.id);
+    if (o === null) {
       this.nodes = [];
       return;
     }
-    const o = this.outlineData;
     this.nodes = buildPathNodes(b.id, pathLessonMetas(o, b.id, (id: string) =>
       DataLoader.tryLesson(b.id, id)?.questions.length ?? 0), this.store, DataLoader.examSlots(o, b.id));
   }
@@ -158,6 +173,7 @@ export struct LearnHome {
     this.unsubStore();
     this.unsubSettings();
     this.unsubLearners();
+    this.unsubDownloads();
   }
 
   aboutToAppear(): void {
@@ -168,6 +184,11 @@ export struct LearnHome {
     this.syncLearner();
     this.unsubSettings = SettingsStore.shared.onChange(() => {
       this.mKids = SettingsStore.shared.kidsMode;
+    });
+    this.unsubDownloads = onBookAvailabilityChange((bookId: string): void => {
+      if (bookId === this.book?.id) {
+        this.rebuild();
+      }
     });
     this.rebuild();
   }
@@ -303,11 +324,9 @@ export struct LearnHome {
         }
         .layoutWeight(1)
         .justifyContent(FlexAlign.Center)
-      } else if (this.nodes.length === 0 || this.dl.inFlight.has(this.book?.id ?? '')) {
-        // outline.json 在课程 JSON 下完（35%）就落盘，此时任何 rebuild 都会让路径图顶掉下载卡，
-        // 后面 65% 的音频下载就看不到进度了；下载中一律保留下载卡。
+      } else if (this.nodes.length === 0) {
         Column({ space: 16 }) {
-          BookDownloadCard({ bookId: this.book?.id ?? '', onComplete: () => this.rebuild() })
+          BookDownloadCard({ bookId: this.book?.id ?? '' })
             .padding({ left: 20, right: 20 })
         }
         .layoutWeight(1)
@@ -360,9 +379,20 @@ export struct BookListBody {
   store: ProgressStore = ProgressStore.shared;
   dl: AssetDownloader = AssetDownloader.shared;
   @Local grade: number = 0;
+  @Local downloadingBooks: string[] = [];
+  private unsubDownloads: () => void = () => {
+  };
 
   aboutToAppear(): void {
     this.grade = this.store.selectedGrade;
+    this.downloadingBooks = Array.from(this.dl.inFlight);
+    this.unsubDownloads = onBookAvailabilityChange((): void => {
+      this.downloadingBooks = Array.from(this.dl.inFlight);
+    });
+  }
+
+  aboutToDisappear(): void {
+    this.unsubDownloads();
   }
 
   private books(): Book[] {
@@ -389,7 +419,9 @@ export struct BookListBody {
         Text(b.fullName).fontSize(F.body).fontWeight(W.bold).fontColor(C.ink).maxLines(2)
         Row({ space: 6 }) {
           Pill(`${b.unitsCount} 单元 · ${b.lessonsCount} 课`, C.inkMuted, C.surfaceAlt)
-          if (this.store.activeBookId === b.id) {
+          if (this.downloadingBooks.includes(b.id)) {
+            Pill('下载中', C.secondary, alpha(C.secondary, 0.12))
+          } else if (this.store.activeBookId === b.id) {
             Pill('学习中', '#FFFFFF', C.primary)
           } else if (!bookInstalled(b.id)) {
             Pill('待下载', C.secondary, alpha(C.secondary, 0.12))
@@ -470,14 +502,30 @@ export struct BookListPage {
 export struct BookDetailPage {
   @Param route: AppRoute = new AppRoute('bookDetail');
   store: ProgressStore = ProgressStore.shared;
-  dl: AssetDownloader = AssetDownloader.shared;
+  @Local outlineData: Outline | null = null;
+  private unsubDownloads: () => void = () => {
+  };
+
+  aboutToAppear(): void {
+    this.reloadOutline();
+    this.unsubDownloads = onBookAvailabilityChange((bookId: string): void => {
+      if (bookId === this.route.bookId) {
+        this.reloadOutline();
+      }
+    });
+  }
+
+  aboutToDisappear(): void {
+    this.unsubDownloads();
+  }
+
+  @Monitor('route')
+  reloadOutline(): void {
+    this.outlineData = availableOutline(this.route.bookId);
+  }
 
   private book(): Book | undefined {
     return allBooks().find((b: Book) => b.id === this.route.bookId);
-  }
-
-  private outlineData(): Outline | null {
-    return DataLoader.tryOutline(this.route.bookId);
   }
 
   @Builder
@@ -509,11 +557,11 @@ export struct BookDetailPage {
       })
       Scroll() {
         Column({ space: 14 }) {
-          if (this.outlineData() === null || this.dl.inFlight.has(this.route.bookId)) {
+          if (this.outlineData === null) {
             BookDownloadCard({ bookId: this.route.bookId })
           } else {
             Text('单元').fontSize(F.caption).fontWeight(W.bold).fontColor(C.inkMuted).width('100%')
-            ForEach(this.outlineData()?.units ?? [], (u: Unit) => {
+            ForEach(this.outlineData?.units ?? [], (u: Unit) => {
               this.unitRow(u.unit_number, u.title, u.knowledge_points.length)
             }, (u: Unit) => `${u.unit_number}`)
             if ((this.book()?.hasPassages ?? false) || (this.book()?.hasStories ?? false)) {
@@ -536,7 +584,7 @@ export struct BookDetailPage {
       .align(Alignment.Top)
       .scrollBar(BarState.Off)
 
-      if (this.outlineData() !== null) {
+      if (this.outlineData !== null) {
         ChunkyButton({ label: '开始学习', onTap: () => {
           const b = this.book();
           if (b === undefined) {

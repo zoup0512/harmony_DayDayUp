@@ -26,6 +26,32 @@ export class BookPlan {
 
 const SAFE_COMPONENT = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
+export type BookDownloadPhase = 'idle' | 'preparing' | 'lessons' | 'audio' | 'complete' | 'failed';
+
+/** 下载界面按整份快照刷新，切换课本后也能读到该书当前的进度。 */
+export class BookDownloadState {
+  readonly phase: BookDownloadPhase;
+  readonly percent: number;
+  readonly completed: number;
+  readonly total: number;
+  readonly error: string;
+
+  constructor(phase: BookDownloadPhase = 'idle', percent: number = 0, completed: number = 0,
+    total: number = 0, error: string = '') {
+    this.phase = phase;
+    this.percent = Math.floor(percent);
+    this.completed = completed;
+    this.total = total;
+    this.error = error;
+  }
+
+  get active(): boolean {
+    return this.phase === 'preparing' || this.phase === 'lessons' || this.phase === 'audio';
+  }
+}
+
+type BookDownloadListener = (bookId: string) => void;
+
 @ObservedV2
 export class AssetDownloader {
   static readonly shared: AssetDownloader = new AssetDownloader();
@@ -33,15 +59,15 @@ export class AssetDownloader {
   /** 资源站点根地址（与网页端同一棵 data 树）；换部署时只改这里。 */
   siteBaseURL: string = 'https://www.52razor.site:8443';
 
-  @Trace bookProgress: Map<string, number> = new Map<string, number>();
   @Trace inFlight: Set<string> = new Set<string>();
-  @Trace lastError: string | null = null;
   /** 站点索引最近一次成功拉取时间戳（ms）；0 = 还没拉过。 */
   @Trace indexFetchedAt: number = 0;
   /** 任何一次下载完成都 +1，供页面刷新「已下载」状态。 */
   @Trace revision: number = 0;
 
   private audioReadyCache: Map<string, boolean> = new Map<string, boolean>();
+  private states: Map<string, BookDownloadState> = new Map<string, BookDownloadState>();
+  private listeners: BookDownloadListener[] = [];
 
   /** 这本书的下载计划。lessonCount 取自站点索引（本地 index.json 兜底）。 */
   entry(bookId: string): BookPlan {
@@ -68,6 +94,31 @@ export class AssetDownloader {
   }
 
   // ---------------- 下载状态 ----------------
+
+  stateFor(bookId: string): BookDownloadState {
+    return this.states.get(bookId) ?? new BookDownloadState();
+  }
+
+  onBookChange(listener: BookDownloadListener): () => void {
+    this.listeners.push(listener);
+    return () => {
+      this.listeners = this.listeners.filter((cb: BookDownloadListener) => cb !== listener);
+    };
+  }
+
+  private publish(bookId: string, state: BookDownloadState): void {
+    if (state.active !== this.inFlight.has(bookId)) {
+      const activeBooks = new Set(this.inFlight);
+      if (state.active) {
+        activeBooks.add(bookId);
+      } else {
+        activeBooks.delete(bookId);
+      }
+      this.inFlight = activeBooks;
+    }
+    this.states.set(bookId, state);
+    this.listeners.slice().forEach((cb: BookDownloadListener) => cb(bookId));
+  }
 
   isBookDownloaded(bookId: string): boolean {
     return this.hasBookData(bookId) && this.hasBookAudio(bookId);
@@ -132,10 +183,7 @@ export class AssetDownloader {
     if (this.inFlight.has(bookId)) {
       return;
     }
-    // @Trace 只代理字段引用——Map/Set 内部变更不触发刷新，必须整体重赋。
-    this.inFlight = new Set(this.inFlight).add(bookId);
-    this.bookProgress = new Map(this.bookProgress).set(bookId, 0);
-    this.lastError = null;
+    this.publish(bookId, new BookDownloadState('preparing', 0, 0, 4));
     this.audioReadyCache.clear();
     try {
       const base = `${this.siteBaseURL}/data/books/${bookId}`;
@@ -145,7 +193,7 @@ export class AssetDownloader {
       // 1. outline（必须）。先只解析不落盘——outline.json 是「已安装」标志，课程全部到位后才写。
       const outlineText = await this.fetchText(`${base}/outline.json`);
       const outline = JSON.parse(outlineText) as Outline;
-      this.setProgress(bookId, 0.02);
+      this.publish(bookId, new BookDownloadState('preparing', 2, 1, 4));
 
       // 2. 课文/故事/手册（可选）：只有站点明确 404 才删本地旧文件；网络抖动保留已有内容并中止。
       const extras = ['passages.json', 'stories.json', 'guides.json'];
@@ -160,18 +208,20 @@ export class AssetDownloader {
           }
           Files.remove(`${dir}/${name}`);
         }
-        this.setProgress(bookId, 0.02 + (n + 1) * 0.01);
+        this.publish(bookId, new BookDownloadState('preparing', 3 + n, 2 + n, 1 + extras.length));
       }
 
       // 3. 逐课下载 lesson JSON（进度 0.05 → 0.35）
       const lessonIds = lessonIdsOf(outline, bookId);
       const audioRefs = new Set<string>();
+      this.publish(bookId, new BookDownloadState('lessons', 5, 0, lessonIds.length));
       for (let i = 0; i < lessonIds.length; i++) {
         const id = lessonIds[i];
         const text = await this.fetchText(`${base}/lessons/${id}.json`);
         Files.writeTextAtomic(`${dir}/lessons/${id}.json`, text);
         collectAudioFromLesson(JSON.parse(text) as Lesson, audioRefs);
-        this.setProgress(bookId, 0.05 + (i + 1) / Math.max(1, lessonIds.length) * 0.30);
+        this.publish(bookId, new BookDownloadState('lessons', 5 + 30 * (i + 1) / lessonIds.length,
+          i + 1, lessonIds.length));
       }
       Files.writeTextAtomic(`${dir}/outline.json`, outlineText);
       DataLoader.clearCache();
@@ -187,6 +237,11 @@ export class AssetDownloader {
         return local !== null && !Files.exists(local) && this.audioURL(ref) !== null;
       });
       let finished = refs.length - pending.length;
+      const publishAudio = (): void => {
+        const percent = refs.length > 0 ? 35 + 64 * finished / refs.length : 99;
+        this.publish(bookId, new BookDownloadState('audio', percent, finished, refs.length));
+      };
+      publishAudio();
       let cursor = 0;
       const worker = async (): Promise<void> => {
         while (cursor < pending.length) {
@@ -200,7 +255,7 @@ export class AssetDownloader {
             // 跳过，下次下载会补
           }
           finished++;
-          this.setProgress(bookId, 0.35 + finished / Math.max(1, refs.length) * 0.65);
+          publishAudio();
         }
       };
       const workers: Promise<void>[] = [];
@@ -212,23 +267,15 @@ export class AssetDownloader {
       Files.writeTextAtomic(this.audioMarkerPath(bookId), `${refs.length}`);
       this.audioReadyCache.clear();
       DataLoader.clearCache();
-      this.bookProgress = new Map(this.bookProgress).set(bookId, 1);
       this.revision++;
+      this.publish(bookId, new BookDownloadState('complete', 100));
     } catch (e) {
       this.audioReadyCache.clear();
       const msg = (e as Error).message ?? JSON.stringify(e);
-      this.lastError = '下载失败，请检查网络后重试';
+      this.publish(bookId, new BookDownloadState('failed', this.stateFor(bookId).percent, 0, 0,
+        '下载失败，请检查网络后重试'));
       throw new Error(msg);
-    } finally {
-      const rest = new Set(this.inFlight);
-      rest.delete(bookId);
-      this.inFlight = rest;
     }
-  }
-
-  /** @Trace 只代理字段引用——Map 内部 set 不触发刷新，整体重赋。 */
-  private setProgress(bookId: string, value: number): void {
-    this.bookProgress = new Map(this.bookProgress).set(bookId, value);
   }
 
   /** 网页路径 → 站点下载 URL。`.opus` 源取其 `.mp3` 兄弟（Harmony AVPlayer 直接可播）。 */
