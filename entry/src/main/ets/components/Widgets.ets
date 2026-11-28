@@ -357,10 +357,21 @@ export struct BookDownloadCard {
 
       if (this.dl.inFlight.has(this.bookId)) {
         Column({ space: 6 }) {
-          ProgressBar({ progress: this.dl.bookProgress.get(this.bookId) ?? 0, barHeight: 12, trackColor: C.surfaceAlt })
-          Text(`${Math.floor((this.dl.bookProgress.get(this.bookId) ?? 0) * 100)}%`)
-            .fontSize(F.caption).fontWeight(W.heavy).fontColor(C.secondary).width('100%').textAlign(TextAlign.End)
+          ProgressBar({
+            progress: this.dl.bookProgress.get(this.bookId) ?? 0,
+            barHeight: 12,
+            fillColor: C.secondary,
+            trackColor: C.bgSofter
+          })
+          Row() {
+            Text((this.dl.bookProgress.get(this.bookId) ?? 0) < 0.35 ? '正在下载课程…' : '正在下载音频…')
+              .fontSize(F.caption).fontWeight(W.bold).fontColor(C.inkMuted).layoutWeight(1)
+            Text(`${Math.floor((this.dl.bookProgress.get(this.bookId) ?? 0) * 100)}%`)
+              .fontSize(F.caption).fontWeight(W.heavy).fontColor(C.secondary)
+          }
+          .width('100%')
         }
+        .width('100%')
       } else if (this.dl.lastError !== null) {
         Text(this.dl.lastError).fontSize(F.caption).fontColor(C.danger).width('100%')
       }

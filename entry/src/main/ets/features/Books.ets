@@ -249,6 +249,8 @@ export struct LearnHome {
             Text(`${this.mDone} 课已完成`).fontSize(F.micro).fontWeight(W.bold).fontColor(C.inkMuted)
           }
           .alignItems(HorizontalAlign.Start)
+          // 不给宽度约束时长书名会撑出父行、压到「换课本」上；占满剩余宽度后才会省略号截断。
+          .layoutWeight(1)
         }
         .layoutWeight(1)
         .onClick(() => {
@@ -256,6 +258,8 @@ export struct LearnHome {
         })
 
         Text('换课本').fontSize(F.caption).fontWeight(W.bold).fontColor(C.dark ? C.primary : C.ink)
+          .maxLines(1)
+          .flexShrink(0)
           .padding({ left: 12, right: 12, top: 8, bottom: 8 })
           .backgroundColor(alpha(C.primary, 0.14))
           .borderRadius(999)
@@ -299,7 +303,9 @@ export struct LearnHome {
         }
         .layoutWeight(1)
         .justifyContent(FlexAlign.Center)
-      } else if (this.nodes.length === 0) {
+      } else if (this.nodes.length === 0 || this.dl.inFlight.has(this.book?.id ?? '')) {
+        // outline.json 在课程 JSON 下完（35%）就落盘，此时任何 rebuild 都会让路径图顶掉下载卡，
+        // 后面 65% 的音频下载就看不到进度了；下载中一律保留下载卡。
         Column({ space: 16 }) {
           BookDownloadCard({ bookId: this.book?.id ?? '', onComplete: () => this.rebuild() })
             .padding({ left: 20, right: 20 })
@@ -503,7 +509,7 @@ export struct BookDetailPage {
       })
       Scroll() {
         Column({ space: 14 }) {
-          if (this.outlineData() === null) {
+          if (this.outlineData() === null || this.dl.inFlight.has(this.route.bookId)) {
             BookDownloadCard({ bookId: this.route.bookId })
           } else {
             Text('单元').fontSize(F.caption).fontWeight(W.bold).fontColor(C.inkMuted).width('100%')

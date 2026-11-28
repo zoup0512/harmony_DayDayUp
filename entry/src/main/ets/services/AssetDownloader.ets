@@ -145,9 +145,12 @@ export class AssetDownloader {
       // 1. outline（必须）。先只解析不落盘——outline.json 是「已安装」标志，课程全部到位后才写。
       const outlineText = await this.fetchText(`${base}/outline.json`);
       const outline = JSON.parse(outlineText) as Outline;
+      this.setProgress(bookId, 0.02);
 
       // 2. 课文/故事/手册（可选）：只有站点明确 404 才删本地旧文件；网络抖动保留已有内容并中止。
-      for (const name of ['passages.json', 'stories.json', 'guides.json']) {
+      const extras = ['passages.json', 'stories.json', 'guides.json'];
+      for (let n = 0; n < extras.length; n++) {
+        const name = extras[n];
         try {
           const text = await this.fetchText(`${base}/${name}`);
           Files.writeTextAtomic(`${dir}/${name}`, text);
@@ -157,9 +160,10 @@ export class AssetDownloader {
           }
           Files.remove(`${dir}/${name}`);
         }
+        this.setProgress(bookId, 0.02 + (n + 1) * 0.01);
       }
 
-      // 3. 逐课下载 lesson JSON（进度 0 → 0.35）
+      // 3. 逐课下载 lesson JSON（进度 0.05 → 0.35）
       const lessonIds = lessonIdsOf(outline, bookId);
       const audioRefs = new Set<string>();
       for (let i = 0; i < lessonIds.length; i++) {
@@ -167,7 +171,7 @@ export class AssetDownloader {
         const text = await this.fetchText(`${base}/lessons/${id}.json`);
         Files.writeTextAtomic(`${dir}/lessons/${id}.json`, text);
         collectAudioFromLesson(JSON.parse(text) as Lesson, audioRefs);
-        this.bookProgress = new Map(this.bookProgress).set(bookId, (i + 1) / Math.max(1, lessonIds.length) * 0.35);
+        this.setProgress(bookId, 0.05 + (i + 1) / Math.max(1, lessonIds.length) * 0.30);
       }
       Files.writeTextAtomic(`${dir}/outline.json`, outlineText);
       DataLoader.clearCache();
@@ -196,8 +200,7 @@ export class AssetDownloader {
             // 跳过，下次下载会补
           }
           finished++;
-          this.bookProgress = new Map(this.bookProgress).set(bookId,
-            0.35 + finished / Math.max(1, refs.length) * 0.65);
+          this.setProgress(bookId, 0.35 + finished / Math.max(1, refs.length) * 0.65);
         }
       };
       const workers: Promise<void>[] = [];
@@ -221,6 +224,11 @@ export class AssetDownloader {
       rest.delete(bookId);
       this.inFlight = rest;
     }
+  }
+
+  /** @Trace 只代理字段引用——Map 内部 set 不触发刷新，整体重赋。 */
+  private setProgress(bookId: string, value: number): void {
+    this.bookProgress = new Map(this.bookProgress).set(bookId, value);
   }
 
   /** 网页路径 → 站点下载 URL。`.opus` 源取其 `.mp3` 兄弟（Harmony AVPlayer 直接可播）。 */
