@@ -1,5 +1,5 @@
 // 题型渲染（QuestionViews.swift）：选择 / 判断 / 填空 / 连词成句 / 连线。
-import { LengthMetrics } from '@kit.ArkUI';
+import { KeyboardAvoidMode, LengthMetrics } from '@kit.ArkUI';
 import { C, F, R, W, alpha, mix, Motion } from '../design/Theme';
 import { gradeAnswer, matchingPairs, readableWordOrderAnswer } from '../domain/Grade';
 import { renderMathText } from '../domain/MathText';
@@ -401,6 +401,9 @@ struct TrueFalseQuestion {
   }
 }
 
+/** 当前挂载的填空题实例数；归零时才恢复默认键盘避让模式。 */
+let fillBlankMounted: number = 0;
+
 @ComponentV2
 struct FillBlankQuestion {
   @Param question: Question | undefined = undefined;
@@ -411,6 +414,20 @@ struct FillBlankQuestion {
   @Event onAnswer: (a: string) => void = (_a: string) => {
   };
   @Local dx: number = 0;
+
+  // 默认 OFFSET 只把输入框顶到键盘上方，题页底部的「检查」按钮仍被键盘盖住；
+  // 作答期间改为 RESIZE，让页面缩到键盘上方，底栏随之上移。用计数应对连续两道填空题的新旧实例交叠。
+  aboutToAppear(): void {
+    fillBlankMounted++;
+    this.getUIContext().setKeyboardAvoidMode(KeyboardAvoidMode.RESIZE);
+  }
+
+  aboutToDisappear(): void {
+    fillBlankMounted = Math.max(0, fillBlankMounted - 1);
+    if (fillBlankMounted === 0) {
+      this.getUIContext().setKeyboardAvoidMode(KeyboardAvoidMode.OFFSET);
+    }
+  }
 
   @Monitor('phase')
   onPhase(): void {
@@ -477,13 +494,11 @@ struct WordOrderQuestion {
     this.onAnswer(next.map((i: number) => this.options()[i]).join(','));
   }
 
+  // 底缘直接画在 Stack 自身背景上（padding bottom 3 露出）。不要用 '100%' 的 Row 当底座：
+  // 自动尺寸的 Stack/Flex 里百分比按祖先容器取值，会把词块池撑成整屏、其余词块不渲染。
   @Builder
   chip(text: string, filled: boolean, ghost: boolean, onTap: () => void) {
     Stack({ alignContent: Alignment.Top }) {
-      if (!ghost) {
-        Row().width('100%').height('100%').borderRadius(999).backgroundColor(filled ? C.primaryDark : C.border)
-          .margin({ top: 3 })
-      }
       Text(renderMathText(text))
         .fontSize(F.subhead)
         .fontWeight(W.bold)
@@ -494,6 +509,8 @@ struct WordOrderQuestion {
         .border({ width: ghost ? 0 : 2, color: filled ? C.primary : C.border, radius: 999 })
     }
     .padding({ bottom: 3 })
+    .backgroundColor(ghost ? Color.Transparent : (filled ? C.primaryDark : C.border))
+    .borderRadius(999)
     .onClick(() => {
       if (!ghost) {
         onTap();
@@ -615,10 +632,8 @@ struct MatchingQuestion {
 
   @Builder
   tile(label: string, isLeft: boolean, key: string) {
+    // 底缘画在 Stack 自身背景上，同 WordOrderQuestion.chip：'100%' 高的底座 Row 会把整列撑高。
     Stack({ alignContent: Alignment.Top }) {
-      Row().width('100%').height('100%').borderRadius(R.card).margin({ top: 3 })
-        .backgroundColor((isLeft ? this.wrongLeft === key : this.wrongRight === key) ? C.dangerDark :
-          ((isLeft && this.activeLeft === key) ? C.secondaryDark : C.border))
       Text(renderMathText(label))
         .fontSize(F.subhead)
         .fontWeight(W.bold)
@@ -637,6 +652,9 @@ struct MatchingQuestion {
     }
     .width('100%')
     .padding({ bottom: 3 })
+    .backgroundColor((isLeft ? this.wrongLeft === key : this.wrongRight === key) ? C.dangerDark :
+      ((isLeft && this.activeLeft === key) ? C.secondaryDark : C.border))
+    .borderRadius(R.card)
     .translate({ x: (isLeft ? this.wrongLeft === key : this.wrongRight === key) ? this.dx : 0 })
     .onClick(() => {
       if (this.phase !== 'answering') {

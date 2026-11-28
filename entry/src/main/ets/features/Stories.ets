@@ -213,9 +213,11 @@ export struct StoryReaderPage {
             onCompleted: () => {
               this.listened = true;
             }
-          })
+          }).layoutWeight(1)
           SlowModeBadge()
         }
+        // 定宽 + layoutWeight：SmallChunkyButton 内部 '100%' 否则按祖先列宽取值，把慢速徽章挤成 0 宽。
+        .width('100%')
         ForEach(st.sentences, (s: PassageSentence, i: number) => {
           Row({ space: 10 }) {
             Text(s.text).fontSize(F.body).fontColor(C.ink).lineHeight(24).layoutWeight(1)
@@ -487,9 +489,10 @@ export struct PassageReaderPage {
                 onCompleted: () => {
                   this.finished = true;
                 }
-              })
+              }).layoutWeight(1)
               SlowModeBadge()
             }
+            .width('100%')
             ForEach((this.passage as Passage).sentences, (s: PassageSentence, i: number) => {
               Row({ space: 10 }) {
                 Text(s.text).fontSize(F.body).fontColor(C.ink).lineHeight(24).layoutWeight(1)

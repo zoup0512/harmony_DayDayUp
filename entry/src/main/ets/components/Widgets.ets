@@ -119,11 +119,14 @@ export struct DailyGoalRing {
         .height(this.sz)
         .color(C.bgSofter)
         .style({ strokeWidth: Math.max(5, this.sz * 0.11) })
+        // Progress 的数值会以 '100.000000' 形式进无障碍树；外层 Row 已有 accessibilityText，这里隐藏。
+        .accessibilityLevel('no')
       Progress({ value: this.progress() * 100, total: 100, type: ProgressType.Ring })
         .width(this.sz)
         .height(this.sz)
         .color(this.progress() >= 1 ? C.bee : C.primary)
         .style({ strokeWidth: Math.max(5, this.sz * 0.11), shadow: true })
+        .accessibilityLevel('no')
       Column({ space: 1 }) {
         if (this.progress() >= 1) {
           DuoIcon({ name: 'checkCircle', sz: this.sz * 0.26, color: C.primary })
