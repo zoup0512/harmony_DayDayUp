@@ -2,7 +2,7 @@
 import { curves } from '@kit.ArkUI';
 import { C, F, R, W, alpha, unitColors } from '../design/Theme';
 import { Economy } from '../domain/Economy';
-import { Chest, ChestSlot, Cosmetics, ExamSlot } from '../domain/Catalog';
+import { Chest, ChestSlot, ExamSlot } from '../domain/Catalog';
 import { LessonStatus, PathLessonMeta } from '../models/Types';
 import { ProgressStore } from '../stores/ProgressStore';
 import { SFXEngine } from '../services/Audio';
@@ -633,17 +633,10 @@ export struct PathMap {
               }
             }, (n: PathMapNode, i: number) => `link-${n.id}-${i}`)
             if (this.lessons.length > 0) {
-              Stack() {
-                if (ProgressStore.shared.equippedMascotSkin === Cosmetics.defaultSkin) {
-                  Image($r('app.media.learning_hero')).width(74).height(74).objectFit(ImageFit.Contain)
-                } else {
-                  Mascot({ mood: 'happy', sz: 74, still: true })
-                }
-              }
-              .width(74).height(74)
-              .position({ x: this.stageW - 74, y: BANNER_H + 5 })
-              .hitTestBehavior(HitTestMode.None)
-              .accessibilityLevel('no-hide-descendants')
+              Mascot({ mood: 'happy', sz: 74, still: true, illustrated: true })
+                .position({ x: this.stageW - 74, y: BANNER_H + 5 })
+                .hitTestBehavior(HitTestMode.None)
+                .accessibilityLevel('no-hide-descendants')
             }
             ForEach(this.banners, (b: Banner) => {
               this.bannerView(b)

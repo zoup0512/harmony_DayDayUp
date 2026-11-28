@@ -262,7 +262,7 @@ export struct LearnHome {
       this.bookHeader()
       if (this.book === null) {
         Column({ space: 16 }) {
-          Mascot({ mood: 'wave', sz: 140 })
+          Mascot({ mood: 'wave', sz: 140, illustrated: true })
           Text('挑一本课本开始学习吧').fontSize(F.heading).fontWeight(W.heavy).fontColor(C.ink)
           ChunkyButton({ label: '选择课本', onTap: () => {
             this.showSwitch = true;

@@ -1,4 +1,4 @@
-// 熊猫「聪聪」：Canvas 矢量绘制（MascotView.swift 的逐笔移植）+ 呼吸 / 眨眼 / 张望 / 反应动画。
+// 熊猫「聪聪」：探险插图或答题表情，共用装扮和反应动画。
 import { curves } from '@kit.ArkUI';
 import { MascotMood, MascotReaction } from '../models/Types';
 import { Cosmetics } from '../domain/Catalog';
@@ -23,6 +23,7 @@ export struct Mascot {
   @Param still: boolean = false;
   @Param illustrated: boolean = false;
 
+  @Local equippedSkin: string = ProgressStore.shared.equippedMascotSkin;
   @Local breatheY: number = 0;
   @Local breatheScale: number = 1;
   @Local blink: boolean = false;
@@ -40,22 +41,48 @@ export struct Mascot {
   private ctx: CanvasRenderingContext2D = new CanvasRenderingContext2D(this.settings);
   private timers: number[] = [];
   private alive: boolean = true;
+  private unsubscribeSkin?: () => void;
 
-  private activeSkin(): string {
-    return this.skin.length > 0 ? this.skin : ProgressStore.shared.equippedMascotSkin;
+  private get activeSkin(): string {
+    return this.skin.length > 0 ? this.skin : this.equippedSkin;
   }
 
-  private get showIllustration(): boolean {
-    return this.illustrated && this.activeSkin() === Cosmetics.defaultSkin;
+  private get explorerImage(): Resource {
+    switch (this.activeSkin) {
+      case 'skin_graduate':
+        return $r('app.media.learning_hero_graduate');
+      case 'skin_party':
+      case 'skin_crown':
+      case 'skin_wizard':
+      case 'skin_astronaut':
+      case 'skin_pirate':
+      case 'skin_headphones':
+      case 'skin_laurel':
+        return $r('app.media.learning_hero_barehead');
+      default:
+        return $r('app.media.learning_hero');
+    }
+  }
+
+  private get needsCanvas(): boolean {
+    return !this.illustrated || (this.activeSkin !== Cosmetics.defaultSkin && this.activeSkin !== 'skin_graduate');
   }
 
   aboutToAppear(): void {
+    if (this.skin.length === 0) {
+      this.equippedSkin = ProgressStore.shared.equippedMascotSkin;
+      this.unsubscribeSkin = ProgressStore.shared.onChange(() => {
+        this.equippedSkin = ProgressStore.shared.equippedMascotSkin;
+      });
+    }
     if (this.still) {
       return;
     }
-    setTimeout(() => this.startBreathing(), 30);
-    this.scheduleBlink();
-    this.scheduleGlance();
+    this.timers.push(setTimeout(() => this.startBreathing(), 30));
+    if (!this.illustrated) {
+      this.scheduleBlink();
+      this.scheduleGlance();
+    }
     if (this.reactTo !== undefined) {
       this.timers.push(setTimeout(() => this.run(this.reactTo as MascotReaction), 120));
     }
@@ -63,6 +90,7 @@ export struct Mascot {
 
   aboutToDisappear(): void {
     this.alive = false;
+    this.unsubscribeSkin?.();
     this.timers.forEach((t: number) => clearTimeout(t));
   }
 
@@ -73,9 +101,9 @@ export struct Mascot {
     }
   }
 
-  @Monitor('mood', 'blink', 'gx', 'gy', 'skin', 'sz')
+  @Monitor('mood', 'blink', 'gx', 'gy', 'skin', 'equippedSkin', 'sz', 'illustrated')
   onRedraw(): void {
-    if (!this.showIllustration) {
+    if (this.needsCanvas) {
       this.draw();
     }
   }
@@ -86,7 +114,7 @@ export struct Mascot {
         this.breatheY = -3;
         this.breatheScale = 1.02;
       });
-    if (this.mood === 'wave') {
+    if (!this.illustrated && this.mood === 'wave') {
       this.getUIContext().animateTo({ duration: 550, curve: Curve.EaseInOut, iterations: -1, playMode: PlayMode.Alternate },
         () => {
           this.armUp = true;
@@ -251,6 +279,10 @@ export struct Mascot {
     const c = this.ctx;
     const s = this.sz / 120;
     c.clearRect(-20, -20, this.sz + 40, this.sz + 40);
+    if (this.illustrated) {
+      this.drawExplorerAccessory(s);
+      return;
+    }
     const waving = this.mood === 'wave' && !this.still;
     this.circle(34 * s, 30 * s, 13 * s, PANDA);
     this.circle(86 * s, 30 * s, 13 * s, PANDA);
@@ -295,7 +327,52 @@ export struct Mascot {
       this.ellipse(32 * s, 62 * s, 6 * s, 3.5 * s, '#B3FF9AA8');
       this.ellipse(88 * s, 62 * s, 6 * s, 3.5 * s, '#B3FF9AA8');
     }
-    this.drawAccessory(s, this.activeSkin());
+    this.drawAccessory(s, this.activeSkin);
+  }
+
+  private drawExplorerAccessory(s: number): void {
+    // 120 × 120 等比画框中的双眼中心、头顶和领巾扣；插图中的脸向右上倾斜。
+    const skin = this.activeSkin;
+    const c = this.ctx;
+    c.save();
+    c.scale(s, s);
+    switch (skin) {
+      case 'skin_glasses':
+      case 'skin_sunglasses':
+        c.translate(65.8, 38.7);
+        c.rotate(-0.25);
+        c.scale(0.70, 0.70);
+        c.translate(-60, -48);
+        break;
+      case 'skin_pirate':
+        c.translate(65, 40);
+        c.rotate(-0.24);
+        c.scale(0.72, 0.84);
+        c.translate(-60, -48);
+        break;
+      case 'skin_bowtie':
+        c.translate(70, 64);
+        c.rotate(-0.16);
+        c.scale(0.80, 0.80);
+        c.translate(-60, -89);
+        break;
+      case 'skin_astronaut':
+      case 'skin_headphones':
+      case 'skin_laurel':
+        c.translate(58, 36);
+        c.rotate(-0.25);
+        c.scale(0.82, 0.82);
+        c.translate(-60, -43);
+        break;
+      default:
+        c.translate(56, 27);
+        c.rotate(-0.25);
+        c.scale(0.66, 0.66);
+        c.translate(-60, -26);
+        break;
+    }
+    this.drawAccessory(1, skin);
+    c.restore();
   }
 
   private drawEyes(s: number): void {
@@ -459,15 +536,16 @@ export struct Mascot {
           })
           .transition(TransitionEffect.OPACITY)
       }
-      if (this.showIllustration) {
-        Image($r('app.media.learning_hero')).width(this.sz).height(this.sz).objectFit(ImageFit.Contain)
-      } else {
+      if (this.illustrated) {
+        Image(this.explorerImage).width(this.sz).height(this.sz).objectFit(ImageFit.Contain)
+      }
+      if (this.needsCanvas) {
         Canvas(this.ctx)
           .width(this.sz)
           .height(this.sz)
           .onReady(() => this.draw())
       }
-      if (!this.showIllustration && this.mood === 'wave' && !this.still) {
+      if (!this.illustrated && this.mood === 'wave' && !this.still) {
         Ellipse()
           .width(this.sz * 18 / 120)
           .height(this.sz * 30 / 120)

@@ -31,7 +31,7 @@ export struct Onboarding {
   build() {
     Column({ space: 22 }) {
       Blank().height('6%')
-      Mascot({ mood: 'wave', sz: 150, allowsTap: true })
+      Mascot({ mood: 'wave', sz: 150, allowsTap: true, illustrated: true })
       Column({ space: 6 }) {
         Text('你好，我是聪聪！').fontSize(F.title).fontWeight(W.heavy).fontColor(C.ink)
         Text('每天一课，把课本知识练扎实').fontSize(F.body).fontWeight(W.medium).fontColor(C.inkMuted)

@@ -185,7 +185,7 @@ struct Index {
   @Builder
   dailyReward() {
     ModalCard() {
-      Mascot({ mood: 'cheer', sz: 100 })
+      Mascot({ mood: 'cheer', sz: 100, illustrated: true })
       Text('每日奖励').fontSize(F.heading).fontWeight(W.heavy).fontColor(C.ink)
       Row({ space: 8 }) {
         DuoIcon({ name: 'gem', sz: 26, color: C.beetle })
@@ -237,7 +237,7 @@ struct Index {
     Stack() {
       if (!this.ready) {
         Column({ space: 16 }) {
-          Mascot({ mood: 'happy', sz: 110, still: true })
+          Mascot({ mood: 'happy', sz: 110, still: true, illustrated: true })
           LoadingProgress().width(36).color(C.primary)
         }
         .width('100%')
