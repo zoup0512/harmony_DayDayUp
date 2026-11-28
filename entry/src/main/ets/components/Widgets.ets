@@ -1,5 +1,5 @@
 // 复用卡片与小部件：连胜日历、每日目标环、每日任务、周报、下载卡、朗读按钮、底部 Tab。
-import { C, F, R, W, alpha } from '../design/Theme';
+import { C, CONTENT_MAX_W, F, R, W, alpha } from '../design/Theme';
 import { Economy } from '../domain/Economy';
 import { dateKey, weekdayLabel } from '../domain/Dates';
 import { Quest } from '../domain/Seeded';
@@ -660,7 +660,7 @@ export struct BottomTabBar {
     if (t !== this.active) {
       return C.inkMuted;
     }
-    return C.dark || C.theme !== null ? C.primary : '#327838';
+    return C.theme !== null ? C.primary : C.tone('tab_active_ink');
   }
 
   private badgeCount(t: AppTab): number {
@@ -673,53 +673,65 @@ export struct BottomTabBar {
     return 0;
   }
 
+  private tabA11y(t: AppTab): string {
+    const n = this.badgeCount(t);
+    if (n > 0) {
+      return t === 'review' ? `${tabLabel(t)}，${n} 道待复习` : `${tabLabel(t)}，${n} 个奖励可领取`;
+    }
+    return t === 'league' && this.leagueResult ? `${tabLabel(t)}，有新结算` : tabLabel(t);
+  }
+
   build() {
-    Row() {
-      ForEach(ALL_TABS, (t: AppTab) => {
-        Stack({ alignContent: Alignment.TopEnd }) {
+    Column() {
+      Row() {
+        ForEach(ALL_TABS, (t: AppTab) => {
           Column({ space: 3 }) {
             Stack() {
               DuoIcon({ name: tabIcon(t), sz: 21, color: this.tabInk(t) })
+              if (this.badgeCount(t) > 0) {
+                Text(this.badgeCount(t) > 99 ? '99+' : `${this.badgeCount(t)}`)
+                  .fontSize(F.micro)
+                  .fontWeight(W.heavy)
+                  .fontColor('#FFFFFF')
+                  .padding({ left: 5, right: 5 })
+                  .constraintSize({ minWidth: 18 })
+                  .height(18)
+                  .textAlign(TextAlign.Center)
+                  .backgroundColor(C.danger)
+                  .borderRadius(9)
+                  .border({ width: 2, color: C.bg, radius: 9 })
+                  .markAnchor({ x: 0, y: 0 })
+                  .position({ x: 31, y: -6 })
+              } else if (t === 'league' && this.leagueResult) {
+                Circle().width(10).height(10).fill(C.danger).stroke(C.bg).strokeWidth(2)
+                  .position({ x: 33, y: -1 })
+              }
             }
             .width(48).height(29).borderRadius(11)
             .backgroundColor(this.active === t ? alpha(C.primary, 0.20) : Color.Transparent)
             Text(tabLabel(t)).fontSize(F.micro).fontWeight(W.bold).fontColor(this.tabInk(t)).maxLines(1)
           }
-          .width('100%').height('100%').justifyContent(FlexAlign.Center)
-
-          if (this.badgeCount(t) > 0) {
-            Text(this.badgeCount(t) > 99 ? '99+' : `${this.badgeCount(t)}`)
-              .fontSize(F.micro)
-              .fontWeight(W.heavy)
-              .fontColor('#FFFFFF')
-              .padding({ left: 5, right: 5 })
-              .constraintSize({ minWidth: 18 })
-              .height(18)
-              .textAlign(TextAlign.Center)
-              .backgroundColor(C.danger)
-              .borderRadius(9)
-              .border({ width: 2, color: C.bg, radius: 9 })
-              .margin({ top: 2, right: 4 })
-          } else if (t === 'league' && this.leagueResult) {
-            Circle().width(10).height(10).fill(C.danger).stroke(C.bg).strokeWidth(2)
-          }
-        }
-        .layoutWeight(1)
-        .height(60)
-        .align(Alignment.Center)
-        .onClick(() => {
-          if (this.active !== t) {
-            Haptics.tap();
-            this.onSelect(t);
-          }
-        })
-        .accessibilityText(tabLabel(t))
-      }, (t: AppTab) => t)
+          .layoutWeight(1)
+          .height(60)
+          .justifyContent(FlexAlign.Center)
+          .onClick(() => {
+            if (this.active !== t) {
+              Haptics.tap();
+              this.onSelect(t);
+            }
+          })
+          .accessibilityGroup(true)
+          .accessibilityText(this.tabA11y(t))
+        }, (t: AppTab) => t)
+      }
+      .width('100%')
+      .height(65)
+      .constraintSize({ maxWidth: CONTENT_MAX_W })
+      .padding({ left: 5, right: 5 })
     }
     .width('100%')
-    .height(65)
-    .padding({ left: 5, right: 5 })
-    .backgroundColor(C.dark || C.theme !== null ? C.bg : '#FBFDF8')
     .border({ width: { top: 1 }, color: C.border })
+    .backgroundColor(C.theme !== null ? C.bg : C.tone('tab_bar_bg'))
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
   }
 }

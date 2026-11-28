@@ -1,6 +1,6 @@
 // 题型渲染（QuestionViews.swift）：选择 / 判断 / 填空 / 连词成句 / 连线。
 import { LengthMetrics } from '@kit.ArkUI';
-import { C, F, R, W, alpha, Motion } from '../design/Theme';
+import { C, F, R, W, alpha, mix, Motion } from '../design/Theme';
 import { gradeAnswer, matchingPairs, readableWordOrderAnswer } from '../domain/Grade';
 import { renderMathText } from '../domain/MathText';
 import { Question } from '../models/Types';
@@ -29,13 +29,11 @@ function cardBorder(s: CardState): string {
 function cardFill(s: CardState): string {
   switch (s) {
     case 'selected':
-      return alpha(C.primary, 0.12);
+      return mix(C.primary, C.surface, 0.12);
     case 'correct':
-      return alpha(C.primary, 0.22);
+      return mix(C.primary, C.surface, 0.18);
     case 'wrong':
-      return alpha(C.danger, 0.20);
-    case 'disabled':
-      return alpha(C.surface, 0.5);
+      return mix(C.danger, C.surface, 0.14);
     default:
       return C.surface;
   }
@@ -47,7 +45,7 @@ function cardInk(s: CardState): string {
     case 'correct':
       return C.dark ? C.primary : C.ink;
     case 'wrong':
-      return C.danger;
+      return C.tone('option_wrong_ink');
     case 'disabled':
       return C.inkSofter;
     default:
@@ -195,8 +193,12 @@ struct OptionCard {
               .width('100%')
               .height('100%')
               .padding({ left: 10, right: 10 })
-            Text(this.optionLetter).fontSize(F.micro).fontWeight(W.bold).fontColor(C.inkMuted)
-              .position({ x: 9, y: 6 })
+            Text(this.optionLetter).fontSize(F.micro).fontWeight(W.bold)
+              .fontColor(this.state === 'selected' ? '#FFFFFF' : C.inkMuted)
+              .textAlign(TextAlign.Center)
+              .width(20).height(20).borderRadius(10)
+              .backgroundColor(this.state === 'selected' ? C.primary : Color.Transparent)
+              .position({ x: 6, y: 5 })
             if (this.state === 'correct') {
               DuoIcon({ name: 'checkCircle', sz: 20, color: C.primary }).margin({ top: 6, right: 6 })
             } else if (this.state === 'wrong') {
@@ -229,7 +231,7 @@ struct OptionCard {
       })
       .backgroundColor(cardFill(this.state))
       .borderRadius(R.card)
-      .border({ width: this.state === 'default' || this.state === 'disabled' ? 2 : 2.5, color: cardBorder(this.state), radius: R.card })
+      .border({ width: this.state === 'default' || this.state === 'disabled' ? 2 : 3, color: cardBorder(this.state), radius: R.card })
       .shadow(this.state === 'correct' ? { radius: 4, color: alpha(C.primary, 0.35) } :
         (this.state === 'wrong' ? { radius: 4, color: alpha(C.danger, 0.3) } : { radius: 0, color: Color.Transparent }))
       .translate({ y: this.pressed ? 4 : 0 })

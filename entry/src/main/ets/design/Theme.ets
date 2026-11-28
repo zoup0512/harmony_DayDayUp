@@ -1,7 +1,31 @@
 // Duolingo 风设计系统（DuoColors / DuoFont / DuoLayout / Motion 的鸿蒙版）。
 // 颜色是响应式的：Palette.dark / theme 一变，所有读到 C.xxx 的组件自动重绘。
 import { curves } from '@kit.ArkUI';
+import { common } from '@kit.AbilityKit';
+import { resourceManager } from '@kit.LocalizationKit';
 import { UiThemeData } from '../domain/Catalog';
+
+export type ToneName =
+  'ink' | 'ink_muted' | 'ink_softer' | 'bg' | 'bg_softer' | 'surface' | 'surface_alt' | 'border' |
+  'study_header' | 'reward_surface' | 'reward_border' | 'locked_node_top' | 'locked_node_ledge' |
+  'tab_bar_bg' | 'tab_active_ink' | 'reward_button_bg' | 'reward_button_fg' | 'path_locked_top' |
+  'path_done_top' | 'path_locked_ledge' | 'path_done_ledge' | 'path_locked_icon' | 'path_done_icon' |
+  'path_trail' | 'unit_banner_label' | 'unit_banner_title' | 'unit_banner_action' | 'unit_banner_chip' |
+  'unit_banner_gradient_end' | 'unit_banner_shadow' | 'lesson_figure_bg' | 'option_wrong_ink';
+
+const TONE_NAMES: ToneName[] = [
+  'ink', 'ink_muted', 'ink_softer', 'bg', 'bg_softer', 'surface', 'surface_alt', 'border', 'study_header',
+  'reward_surface', 'reward_border', 'locked_node_top', 'locked_node_ledge', 'tab_bar_bg', 'tab_active_ink',
+  'reward_button_bg', 'reward_button_fg', 'path_locked_top', 'path_done_top', 'path_locked_ledge',
+  'path_done_ledge', 'path_locked_icon', 'path_done_icon', 'path_trail', 'unit_banner_label',
+  'unit_banner_title', 'unit_banner_action', 'unit_banner_chip', 'unit_banner_gradient_end',
+  'unit_banner_shadow', 'lesson_figure_bg', 'option_wrong_ink'
+];
+
+function argbToHex(v: number): string {
+  const h = (v >>> 0).toString(16).toUpperCase().padStart(8, '0');
+  return h.startsWith('FF') ? `#${h.substring(2)}` : `#${h}`;
+}
 
 function hexToRgb(hex: string): number[] {
   const h = hex.replace('#', '');
@@ -18,6 +42,13 @@ function toHex2(n: number): string {
 export function alpha(hex: string, a: number): string {
   const rgb = hexToRgb(hex);
   return `#${toHex2(a * 255)}${toHex2(rgb[0])}${toHex2(rgb[1])}${toHex2(rgb[2])}`;
+}
+
+/** 把 fg 按比例 t 叠到不透明底色 bg 上，得到不透明的 '#RRGGBB'（避免半透明填充透出下层色块）。 */
+export function mix(fg: string, bg: string, t: number): string {
+  const a = hexToRgb(fg);
+  const b = hexToRgb(bg);
+  return `#${toHex2(b[0] + (a[0] - b[0]) * t)}${toHex2(b[1] + (a[1] - b[1]) * t)}${toHex2(b[2] + (a[2] - b[2]) * t)}`;
 }
 
 /** HSB 亮度下调（DuoColors.darken）。 */
@@ -37,6 +68,26 @@ export class Palette {
 
   @Trace dark: boolean = false;
   @Trace theme: UiThemeData | null = null;
+  private lightTones: Map<string, string> = new Map<string, string>();
+  private darkTones: Map<string, string> = new Map<string, string>();
+
+  load(ctx: common.Context): void {
+    const rm = ctx.resourceManager;
+    const lightCfg = rm.getOverrideConfiguration();
+    lightCfg.colorMode = resourceManager.ColorMode.LIGHT;
+    const darkCfg = rm.getOverrideConfiguration();
+    darkCfg.colorMode = resourceManager.ColorMode.DARK;
+    const lightRm = rm.getOverrideResourceManager(lightCfg);
+    const darkRm = rm.getOverrideResourceManager(darkCfg);
+    TONE_NAMES.forEach((n: ToneName) => {
+      this.lightTones.set(n, argbToHex(lightRm.getColorByNameSync(n)));
+      this.darkTones.set(n, argbToHex(darkRm.getColorByNameSync(n)));
+    });
+  }
+
+  tone(name: ToneName): string {
+    return (this.dark ? this.darkTones : this.lightTones).get(name) ?? '#FF00FF';
+  }
 
   // 品牌固定色
   readonly feather: string = '#58CC02';
@@ -54,10 +105,6 @@ export class Palette {
   readonly eel: string = '#4B4B4B';
   readonly navy: string = '#131F24';
   readonly white: string = '#FFFFFF';
-
-  private a(light: string, dark: string): string {
-    return this.dark ? dark : light;
-  }
 
   get primary(): string {
     return this.theme?.primary ?? '#61C63F';
@@ -77,11 +124,11 @@ export class Palette {
   }
 
   get ink(): string {
-    return this.a('#263B2B', '#FFFFFF');
+    return this.tone('ink');
   }
 
   get inkLight(): string {
-    return this.a('#53695A', '#A4B8B0');
+    return this.tone('ink_muted');
   }
 
   get inkMuted(): string {
@@ -89,7 +136,7 @@ export class Palette {
   }
 
   get inkSofter(): string {
-    return this.a('#728376', '#93A7AF');
+    return this.tone('ink_softer');
   }
 
   get bg(): string {
@@ -97,7 +144,7 @@ export class Palette {
     if (t !== null && (t.isDark || !this.dark)) {
       return t.bg;
     }
-    return this.a('#FFFFFF', '#131F24');
+    return this.tone('bg');
   }
 
   /** 设置主题与明暗；有变化时返回 true（调用方据此整体重建界面）。 */
@@ -110,39 +157,39 @@ export class Palette {
   }
 
   get bgSofter(): string {
-    return this.a('#E9EDE7', '#37464F');
+    return this.tone('bg_softer');
   }
 
   get surface(): string {
-    return this.a('#FFFFFF', '#202F36');
+    return this.tone('surface');
   }
 
   get surfaceAlt(): string {
-    return this.a('#F2F6EE', '#37464F');
+    return this.tone('surface_alt');
   }
 
   get border(): string {
-    return this.a('#DBE6D6', '#37464F');
+    return this.tone('border');
   }
 
   get studyHeader(): string {
-    return this.theme === null ? this.a('#91DB79', '#254132') : alpha(this.primary, this.dark ? 0.22 : 0.30);
+    return this.theme === null ? this.tone('study_header') : alpha(this.primary, this.dark ? 0.22 : 0.30);
   }
 
   get rewardSurface(): string {
-    return this.a('#FFF3CC', '#3B3426');
+    return this.tone('reward_surface');
   }
 
   get rewardBorder(): string {
-    return this.a('#EACB79', '#76613D');
+    return this.tone('reward_border');
   }
 
   get lockedNodeTop(): string {
-    return this.a('#E5E5E5', '#37464F');
+    return this.tone('locked_node_top');
   }
 
   get lockedNodeLedge(): string {
-    return this.a('#C4C4C4', '#202F36');
+    return this.tone('locked_node_ledge');
   }
 }
 
@@ -157,7 +204,7 @@ export class F {
   static readonly body: number = 16;
   static readonly button: number = 17;
   static readonly caption: number = 13;
-  static readonly micro: number = 11;
+  static readonly micro: number = 12;
 }
 
 /** 字重：heavy=800 / bold=700 / medium=500 / black=900 */
@@ -173,6 +220,8 @@ export class R {
   static readonly card: number = 16;
   static readonly large: number = 20;
 }
+
+export const CONTENT_MAX_W: number = 680;
 
 export class S {
   static readonly xs: number = 4;

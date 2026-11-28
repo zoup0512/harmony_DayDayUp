@@ -234,6 +234,7 @@ export struct LearnHome {
     .width('100%')
     .padding({ left: 16, right: 16, top: 6, bottom: 6 })
     .backgroundColor(C.studyHeader)
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP])
   }
 
   @Builder

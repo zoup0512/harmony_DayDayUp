@@ -310,7 +310,9 @@ export struct LessonRunner {
           }, 1500);
         }, 320);
       }
-      this.scheduleAutoAdvance(isMilestone ? AUTO_ADVANCE_COMBO_MS : AUTO_ADVANCE_MS);
+      if (this.settings.autoAdvance) {
+        this.scheduleAutoAdvance(isMilestone ? AUTO_ADVANCE_COMBO_MS : AUTO_ADVANCE_MS);
+      }
     } else {
       this.attempted = true;
       if (!this.missed.includes(q.id)) {
@@ -508,6 +510,7 @@ export struct LessonRunner {
       }
       .width(36)
       .height(36)
+      .responseRegion({ x: '-20%', y: '-20%', width: '140%', height: '140%' })
       .onClick(() => this.requestClose())
       .accessibilityText('关闭')
 
@@ -548,12 +551,14 @@ export struct LessonRunner {
       }
       .width(32)
       .height(36)
+      .responseRegion({ x: '-20%', y: '-20%', width: '140%', height: '140%' })
       .onClick(() => {
         Haptics.tap();
         this.showSettings = true;
       })
+      .accessibilityText('课程设置')
       .bindSheet(this.showSettings, this.settingsSheet(), {
-        height: 380, dragBar: true, backgroundColor: C.bg, onDisappear: () => {
+        height: 460, dragBar: true, backgroundColor: C.bg, onDisappear: () => {
           this.showSettings = false;
         }
       })
@@ -594,6 +599,8 @@ export struct LessonRunner {
         (v: boolean) => this.settings.setHaptic(v))
       this.toggleRow('bubbleText', '自动朗读', '进入新题目时自动朗读题干', this.settings.autoNarrate,
         (v: boolean) => this.settings.setAutoNarrate(v))
+      this.toggleRow('bolt', '答对自动下一题', '关掉后可以慢慢看完解析再点「继续」', this.settings.autoAdvance,
+        (v: boolean) => this.settings.setAutoAdvance(v))
       ChunkyButton({ label: '好了', onTap: () => {
         this.showSettings = false;
       } })
@@ -654,7 +661,7 @@ export struct LessonRunner {
             Text(`正确答案：${renderMathText(q.answer)}`).fontSize(F.caption).fontWeight(W.bold).fontColor(C.danger)
             if (this.kids) {
               Text(q.id === this.slots.stretchId ? '踮脚题敢挑战就很棒，不封宝箱！' : '心魔出现了，下课后去收服它就能拿回宝箱')
-                .fontSize(F.micro).fontWeight(W.bold).fontColor(C.inkMuted)
+                .fontSize(F.caption).fontWeight(W.bold).fontColor(C.inkMuted).lineHeight(19)
             }
           } else if (this.bubble.length > 0) {
             Text(this.bubble).fontSize(F.caption).fontWeight(W.bold).fontColor(alpha(C.primary, 0.85))
@@ -668,6 +675,7 @@ export struct LessonRunner {
         }
         .width(34)
         .height(34)
+        .responseRegion({ x: '-20%', y: '-20%', width: '140%', height: '140%' })
         .onClick(() => {
           Haptics.tap();
           this.reportedKind = '';
@@ -739,7 +747,7 @@ export struct LessonRunner {
             if (this.lessonId === 'g1up-u1-kp2' && q.type === 'choice' &&
               q.question.trim() === '桌上有3个杯子和3个盖子，杯子和盖子的数量关系是？') {
               Image($r('app.media.lesson_cup_pairs')).width('100%').height(130).objectFit(ImageFit.Contain)
-                .backgroundColor(C.dark ? C.rewardSurface : '#FBF9E8').borderRadius(R.card)
+                .backgroundColor(C.tone('lesson_figure_bg')).borderRadius(R.card)
                 .border({ width: 1, color: C.rewardBorder, radius: R.card }).clip(true)
                 .accessibilityText('三个盖子和三个杯子，上下各成一对')
             }
@@ -936,30 +944,36 @@ export struct LessonRunner {
 
   build() {
     Stack() {
-      if (this.showIntro && this.lesson !== null && this.lesson.knowledge !== undefined && this.lesson.knowledge !== null) {
-        IntroCard({
-          lesson: this.lesson, knowledge: this.lesson.knowledge,
-          onStart: () => {
-            this.store.markIntroSeen(this.lessonId);
-            this.showIntro = false;
-            this.autoNarrate();
-            this.armSlot();
-          },
-          onExit: () => Router.shared.pop()
-        })
-      } else if (this.lesson !== null && this.current() !== undefined) {
-        ForEach([this.current() as Question], (q: Question) => {
-          this.runner(q)
-        }, (q: Question) => `${this.index}-${q.id}`)
-      } else if (this.loadError.length > 0) {
-        Column({ space: S.m }) {
-          Text('加载失败').fontSize(F.heading).fontWeight(W.heavy).fontColor(C.ink)
-          Text(this.loadError).fontSize(F.caption).fontColor(C.inkMuted)
-          ChunkyButton({ label: '返回', variant: 'ghost', onTap: () => Router.shared.pop() }).width(200)
+      Stack() {
+        if (this.showIntro && this.lesson !== null && this.lesson.knowledge !== undefined && this.lesson.knowledge !== null) {
+          IntroCard({
+            lesson: this.lesson, knowledge: this.lesson.knowledge,
+            onStart: () => {
+              this.store.markIntroSeen(this.lessonId);
+              this.showIntro = false;
+              this.autoNarrate();
+              this.armSlot();
+            },
+            onExit: () => Router.shared.pop()
+          })
+        } else if (this.lesson !== null && this.current() !== undefined) {
+          ForEach([this.current() as Question], (q: Question) => {
+            this.runner(q)
+          }, (q: Question) => `${this.index}-${q.id}`)
+        } else if (this.loadError.length > 0) {
+          Column({ space: S.m }) {
+            Text('加载失败').fontSize(F.heading).fontWeight(W.heavy).fontColor(C.ink)
+            Text(this.loadError).fontSize(F.caption).fontColor(C.inkMuted)
+            ChunkyButton({ label: '返回', variant: 'ghost', onTap: () => Router.shared.pop() }).width(200)
+          }
+        } else {
+          LoadingProgress().width(40).color(C.primary)
         }
-      } else {
-        LoadingProgress().width(40).color(C.primary)
       }
+      .width('100%')
+      .height('100%')
+      .accessibilityLevel(this.showOutOfHearts || this.showQuit || this.pendingResume !== null ?
+        'no-hide-descendants' : 'auto')
       if (this.showOutOfHearts) {
         this.outOfHearts()
       }
@@ -1129,10 +1143,12 @@ export struct IntroCard {
         }
         .width(36)
         .height(36)
+        .responseRegion({ x: '-20%', y: '-20%', width: '140%', height: '140%' })
         .onClick(() => {
           Haptics.tap();
           this.onExit();
         })
+        .accessibilityText('关闭')
 
         Row({ space: 6 }) {
           ForEach(this.pages(), (p: IntroPage, i: number) => {
@@ -1205,6 +1221,7 @@ export struct IntroCard {
           .borderRadius(R.card)
           .border({ width: 2, color: C.border, radius: R.card })
           .onClick(() => this.go(-1))
+          .accessibilityText('上一步')
         }
         ChunkyButton({
           label: this.pageIdx >= this.pages().length - 1 ? '开始做题' : '下一步', onTap: () => {

@@ -14,7 +14,8 @@ import { SettingsStore } from '../stores/SettingsStore';
 import { DataLoader } from '../services/DataLoader';
 import { AudioPlayer, SFXEngine } from '../services/Audio';
 import { Haptics } from '../services/Feedback';
-import { CardBox, ChunkyButton, DuoIcon, IconBadge, ModalCard, Pill, ProgressBar, SmallChunkyButton, TitleBar } from '../components/Kit';
+import { CardBox, ChunkyButton, DuoIcon, IconBadge, ModalCard, Pill, ProgressBar, SmallChunkyButton, TabHeader,
+  TitleBar } from '../components/Kit';
 import { Mascot } from '../components/Mascot';
 import { Confetti } from '../components/Effects';
 import { AppRoute, Router } from './Router';
@@ -25,6 +26,8 @@ import { QuestionPhase, QuestionRenderer, stemFontSize } from './Questions';
 export struct ReviewTab {
   store: ProgressStore = ProgressStore.shared;
   @Local rev: number = 0;
+  @Local collapsed: boolean = false;
+  private scroller: Scroller = new Scroller();
 
   private unsubStore: () => void = () => {
   };
@@ -126,17 +129,13 @@ export struct ReviewTab {
     Column() {
       ForEach([this.rev], (r: number) => {
       Column() {
-      Row({ space: 10 }) {
-        Text('错题本').fontSize(F.title).fontWeight(W.heavy).fontColor(C.ink).layoutWeight(1)
+      TabHeader({ title: '错题本', collapsed: this.collapsed }) {
         if (this.store.dueMistakes.length > 0) {
-          Pill(`待复习 ${this.store.dueMistakes.length}`, C.ink, C.surface)
+          Pill(`待复习 ${this.store.dueMistakes.length}`, C.fox, alpha(C.fox, 0.14))
         }
       }
-      .width('100%')
-      .padding({ left: 18, right: 18, top: 9, bottom: 13 })
-      .backgroundColor(C.studyHeader)
 
-      Scroll() {
+      Scroll(this.scroller) {
         Column({ space: 12 }) {
           if (this.store.sealedChests.length > 0) {
             Text('心魔录').fontSize(F.subhead).fontWeight(W.heavy).fontColor(C.ink).width('100%')
@@ -174,16 +173,22 @@ export struct ReviewTab {
           Blank().height(30)
         }
         .width('100%')
-        .padding({ left: 18, right: 18, top: 16 })
+        .padding({ left: 18, right: 18, top: 4 })
         .alignItems(HorizontalAlign.Start)
       }
       .layoutWeight(1)
       .align(Alignment.Top)
+      .onDidScroll(() => {
+        this.collapsed = this.scroller.currentOffset().yOffset > 12;
+      })
 
       if (this.store.dueMistakes.length > 0) {
+        if (!SettingsStore.shared.kidsMode) {
+          Text(`答对 ${Economy.reviewHeartMinCorrect} 题奖励 1 颗红心`).fontSize(F.caption).fontWeight(W.bold)
+            .fontColor(C.inkMuted).margin({ top: 8 })
+        }
         ChunkyButton({
-          label: SettingsStore.shared.kidsMode ? `开始复习（${this.store.dueMistakes.length} 题）` :
-            `开始复习（${this.store.dueMistakes.length} 题 · 答对 ${Economy.reviewHeartMinCorrect} 题 +1 ❤️）`,
+          label: `开始复习（${this.store.dueMistakes.length} 题）`,
           onTap: () => {
             Haptics.tap();
             Router.shared.push(new AppRoute('reviewRunner'));
@@ -272,7 +277,9 @@ export struct ReviewRunner {
         }
         .width(36)
         .height(36)
+        .responseRegion({ x: '-20%', y: '-20%', width: '140%', height: '140%' })
         .onClick(() => Router.shared.pop())
+        .accessibilityText('关闭')
 
         ProgressBar({ progress: (this.index + (this.phase === 'checked' ? 1 : 0)) / Math.max(1, this.queue.length),
           sweepTrigger: this.sweep, barHeight: 16, trackColor: C.surfaceAlt })
@@ -388,6 +395,8 @@ export struct ReviewRunner {
 export struct LeagueTab {
   store: ProgressStore = ProgressStore.shared;
   @Local rev: number = 0;
+  @Local collapsed: boolean = false;
+  private scroller: Scroller = new Scroller();
 
   private unsubStore: () => void = () => {
   };
@@ -454,6 +463,7 @@ export struct LeagueTab {
     Column() {
       ForEach([this.rev], (r: number) => {
       Column() {
+      TabHeader({ title: '排行', collapsed: this.collapsed })
       Row({ space: 10 }) {
         Stack() {
           DuoIcon({ name: 'trophy', sz: 26, color: C.fox })
@@ -475,7 +485,7 @@ export struct LeagueTab {
       .backgroundColor(C.rewardSurface)
       .border({ width: 1.5, color: C.rewardBorder, radius: R.card })
       .borderRadius(R.card)
-      .margin({ left: 18, right: 18, top: 10, bottom: 12 })
+      .margin({ left: 18, right: 18, top: 2, bottom: 12 })
 
       if (!this.store.leagueUnlocked) {
         Column({ space: 12 }) {
@@ -493,7 +503,7 @@ export struct LeagueTab {
         .layoutWeight(1)
         .justifyContent(FlexAlign.Center)
       } else {
-        Scroll() {
+        Scroll(this.scroller) {
           Column({ space: 8 }) {
             ForEach(this.standings(), (e: StandingEntry, i: number) => {
               Column({ space: 4 }) {
@@ -518,6 +528,9 @@ export struct LeagueTab {
         }
         .layoutWeight(1)
         .align(Alignment.Top)
+        .onDidScroll(() => {
+          this.collapsed = this.scroller.currentOffset().yOffset > 12;
+        })
       }
       }
       .width('100%')
@@ -535,6 +548,8 @@ export struct LeagueTab {
 export struct ShopTab {
   store: ProgressStore = ProgressStore.shared;
   @Local rev: number = 0;
+  @Local collapsed: boolean = false;
+  private scroller: Scroller = new Scroller();
 
   private unsubStore: () => void = () => {
   };
@@ -630,30 +645,32 @@ export struct ShopTab {
     Column() {
       ForEach([this.rev], (r: number) => {
       Column() {
-      Row({ space: 10 }) {
-        Text('商店').fontSize(F.title).fontWeight(W.heavy).fontColor(C.ink).layoutWeight(1)
+      TabHeader({ title: '商店', collapsed: this.collapsed }) {
         Row({ space: 4 }) {
           DuoIcon({ name: 'gem', sz: 18, color: C.beetle })
           Text(`${this.store.gems}`).fontSize(F.body).fontWeight(W.heavy).fontColor(C.beetle)
         }
         .padding({ left: 11, right: 11, top: 5, bottom: 5 })
         .borderRadius(R.control).backgroundColor(alpha(C.beetle, 0.13))
+        .accessibilityGroup(true)
+        .accessibilityText(`${this.store.gems} 宝石`)
       }
-      .padding({ left: 18, right: 18, top: 14, bottom: 10 })
 
-      Scroll() {
+      Scroll(this.scroller) {
         Column({ space: 9 }) {
           Text('补给').fontSize(F.subhead).fontWeight(W.heavy).fontColor(C.ink).width('100%')
-          this.goodsRow('heart', C.danger, '补满红心', `立刻回满 ${Economy.maxHearts} 颗红心`,
-            `${Economy.heartRefillCost}`, this.store.hearts < Economy.maxHearts && this.store.gems >= Economy.heartRefillCost,
-            (): void => {
-              if (this.store.buyHeartRefill()) {
-                Haptics.success();
-                SFXEngine.shared.play('purchase');
-              } else {
-                Haptics.wrong();
-              }
-            })
+          if (!SettingsStore.shared.kidsMode) {
+            this.goodsRow('heart', C.danger, '补满红心', `立刻回满 ${Economy.maxHearts} 颗红心`,
+              `${Economy.heartRefillCost}`, this.store.hearts < Economy.maxHearts && this.store.gems >= Economy.heartRefillCost,
+              (): void => {
+                if (this.store.buyHeartRefill()) {
+                  Haptics.success();
+                  SFXEngine.shared.play('purchase');
+                } else {
+                  Haptics.wrong();
+                }
+              })
+          }
           this.goodsRow('snowflake', C.secondary, '连胜护盾', `缺勤时自动保住连胜 · 最多 ${Economy.maxFreezes} 个`,
             `${Economy.freezeCost}`, this.store.streakFreezes < Economy.maxFreezes && this.store.gems >= Economy.freezeCost,
             (): void => {
@@ -686,6 +703,9 @@ export struct ShopTab {
       }
       .layoutWeight(1)
       .align(Alignment.Top)
+      .onDidScroll(() => {
+        this.collapsed = this.scroller.currentOffset().yOffset > 12;
+      })
       }
       .width('100%')
       .height('100%')

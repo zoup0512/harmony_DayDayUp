@@ -22,7 +22,7 @@ import {
   BadgeData, ShareCardButton, StreakShareData
 } from '../components/ShareCard';
 import {
-  CardBox, ChunkyButton, DuoIcon, IconBadge, ModalCard, Pill, SmallChunkyButton, TitleBar
+  CardBox, ChunkyButton, DuoIcon, IconBadge, ModalCard, Pill, SmallChunkyButton, TabHeader, TitleBar
 } from '../components/Kit';
 import { Mascot } from '../components/Mascot';
 import { DailyGoalRing, DailyQuestsCard, StreakCalendar, weekCalendar } from '../components/Widgets';
@@ -59,6 +59,8 @@ struct SettingRow {
 export struct ProfileTab {
   store: ProgressStore = ProgressStore.shared;
   @Local rev: number = 0;
+  @Local collapsed: boolean = false;
+  private scroller: Scroller = new Scroller();
   @Local editingName: boolean = false;
   @Local nameDraft: string = '';
 
@@ -302,22 +304,45 @@ export struct ProfileTab {
 
   build() {
     Stack() {
-      Scroll() {
-        Column() {
-          ForEach([this.rev], (r: number) => {
-            Column({ space: 14 }) {
-              this.profileContents()
-            }
-            .width('100%')
-          }, (r: number) => `${r}`)
+      Column() {
+        TabHeader({ title: '我的', collapsed: this.collapsed }) {
+          Stack() {
+            DuoIcon({ name: 'gear', sz: 20, color: C.inkMuted })
+          }
+          .width(40)
+          .height(40)
+          .borderRadius(20)
+          .backgroundColor(C.surfaceAlt)
+          .responseRegion({ x: '-10%', y: '-10%', width: '120%', height: '120%' })
+          .onClick(() => {
+            Haptics.tap();
+            Router.shared.push(new AppRoute('settings'));
+          })
+          .accessibilityText('设置')
+        }
+        Scroll(this.scroller) {
+          Column() {
+            ForEach([this.rev], (r: number) => {
+              Column({ space: 14 }) {
+                this.profileContents()
+              }
+              .width('100%')
+            }, (r: number) => `${r}`)
+          }
+          .width('100%')
+          .padding({ left: 16, right: 16, top: 4, bottom: 24 })
         }
         .width('100%')
-        .padding({ left: 16, right: 16, top: 12, bottom: 24 })
+        .layoutWeight(1)
+        .align(Alignment.Top)
+        .onDidScroll(() => {
+          this.collapsed = this.scroller.currentOffset().yOffset > 12;
+        })
       }
       .width('100%')
       .height('100%')
-      .align(Alignment.Top)
       .backgroundColor(C.bg)
+      .accessibilityLevel(this.editingName ? 'no-hide-descendants' : 'auto')
 
       if (this.editingName) {
         this.nameDialog()
@@ -629,6 +654,8 @@ export struct SettingsPage {
                 this.kidsRev++;
               }) })
           }, (kr: number) => `kids-${kr}`)
+          SettingRow({ title: '答对自动下一题', subtitle: '关掉后可以看完解析再点「继续」', control: (): void => this.switchCtl(this.settings.autoAdvance,
+              (v: boolean) => this.settings.setAutoAdvance(v)) })
 
           Text('声音与触感').fontSize(F.caption).fontWeight(W.bold).fontColor(C.inkMuted).width('100%')
             .margin({ top: 6 })
@@ -729,6 +756,8 @@ export struct SettingsPage {
     .width('100%')
     .height('100%')
     .backgroundColor(C.bg)
+    .accessibilityLevel(this.confirmReset || this.pendingImport.length > 0 || this.gateReason.length > 0 ?
+      'no-hide-descendants' : 'auto')
 
       if (this.confirmReset) {
         this.resetDialog()

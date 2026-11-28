@@ -1,0 +1,244 @@
+{
+  "id": "chinese-g3down-u1-kp2",
+  "title": "燕子的外形与动态描写顺序",
+  "bookId": "chinese-g3down",
+  "unitNumber": 1,
+  "unitTitle": "可爱生灵",
+  "kpIndex": 1,
+  "kpTotal": 3,
+  "questions": [
+    {
+      "id": 1,
+      "type": "true_false",
+      "score": 2,
+      "difficulty": 1,
+      "knowledge_point": "燕子的外形与动态描写顺序",
+      "question": "描写燕子的外形时，课文是按照从局部到整体的顺序写的。",
+      "options": [],
+      "answer": "错",
+      "explanation": "课文《燕子》描写外形时是由局部到整体：先写羽毛，再写翅膀，接着是尾巴，最后凑成活泼可爱的小燕子。",
+      "audio": {
+        "question": "/audio/93/931ca5c3ee0f33ea896bc25dfae75db47da7e92c.mp3",
+        "explanation": "/audio/4b/4b553f88f2768e011f391753bfe74bc37843ff6a.mp3"
+      }
+    },
+    {
+      "id": 3,
+      "type": "true_false",
+      "score": 2,
+      "difficulty": 1,
+      "knowledge_point": "燕子的外形与动态描写顺序",
+      "question": "“剪尾”是形容燕子的尾巴像剪刀一样。",
+      "options": [],
+      "answer": "对",
+      "explanation": "燕子的尾巴分叉，形状酷似剪刀。",
+      "audio": {
+        "question": "/audio/3a/3a5294693e5b95678ae56eba738bb611032f9e35.mp3",
+        "explanation": "/audio/92/92725517e6355742d639d592497cd8e56b66d00f.mp3"
+      }
+    },
+    {
+      "id": 6,
+      "type": "choice",
+      "score": 5,
+      "difficulty": 1,
+      "knowledge_point": "燕子的外形与动态描写顺序",
+      "question": "下列词语中，哪一个是形容小燕子动作轻盈的？",
+      "options": [
+        "跌落",
+        "闲散",
+        "掠过",
+        "飞舞"
+      ],
+      "answer": "掠过",
+      "explanation": "“掠过”体现了燕子飞行速度快且动作敏捷、轻盈。",
+      "audio": {
+        "question": "/audio/59/59261944f485ea3a66d3339e8b3bf508b34bb547.mp3",
+        "options": [
+          "/audio/26/269349e953e6a96fa2dcea5e8f4395c22b778c07.mp3",
+          "/audio/f1/f15c58f1344865960d49e29a34b86a949d326d58.mp3",
+          "/audio/32/32970545a0dfebf22ba0a645576cd54542e9503f.mp3",
+          "/audio/db/db515ba37ada6b48d6e8e154d95575188fa1aa86.mp3"
+        ],
+        "explanation": "/audio/cc/ccd4e6a1273efa0d5d0ce49069017d6cd643c678.mp3"
+      }
+    },
+    {
+      "id": 9,
+      "type": "choice",
+      "score": 5,
+      "difficulty": 2,
+      "knowledge_point": "燕子的外形与动态描写顺序",
+      "question": "“清香、嫩叶、花苞”这些词主要用于描写荷花的什么？",
+      "options": [
+        "动态景象",
+        "生长过程",
+        "静止状态",
+        "嗅觉感受"
+      ],
+      "answer": "静止状态",
+      "explanation": "题目给出的词语多是对荷花样子、气味的静态观察。",
+      "audio": {
+        "question": "/audio/32/32c42898f27916d8d1f8157d3f4d1b5f31f8ab97.mp3",
+        "options": [
+          "/audio/c8/c8f10a9462f4f255a4ac52c2c3da0e5546c5eae4.mp3",
+          "/audio/d9/d90dc9e719ef976535608f6c16fb8ceab6f2a1f4.mp3",
+          "/audio/63/638abbcd519a93ead405d8f93966cd4594b66940.mp3",
+          "/audio/ea/ea43800b6e2f556e21bfbb609e6512e4db7dc969.mp3"
+        ],
+        "explanation": "/audio/88/887eb4bf1f25e5f55e807f545e862518c6f12510.mp3"
+      }
+    },
+    {
+      "id": 11,
+      "type": "choice",
+      "score": 5,
+      "difficulty": 2,
+      "knowledge_point": "燕子的外形与动态描写顺序",
+      "question": "“有的还是花骨朵儿，看起来饱胀得马上要破裂似的。”这句话运用了什么修辞？",
+      "options": [
+        "比喻",
+        "夸张",
+        "拟人",
+        "排比"
+      ],
+      "answer": "夸张",
+      "explanation": "“马上要破裂似的”运用夸张手法形容花骨朵非常饱满。",
+      "audio": {
+        "question": "/audio/36/36441dae031f159f36f62844d631adbcf69a8f50.mp3",
+        "options": [
+          "/audio/86/86485979096949656e745f85f8e53a781ffc90c0.mp3",
+          "/audio/c7/c78d2034f4242b863e0224263558e7c9066df744.mp3",
+          "/audio/73/73f520d9a1fffcf8eb81d945fca3cd2715921a50.mp3",
+          "/audio/b7/b7758e2a861cb519fac716d4230ac424134c621c.mp3"
+        ],
+        "explanation": "/audio/8c/8c4461b6624fe68cc046d584b2092be4880a7179.mp3"
+      }
+    },
+    {
+      "id": 12,
+      "type": "choice",
+      "score": 5,
+      "difficulty": 1,
+      "knowledge_point": "燕子的外形与动态描写顺序",
+      "question": "下列哪组词语最能概括燕子的羽毛特点？",
+      "options": [
+        "五光十色",
+        "乌黑光亮",
+        "洁白无瑕",
+        "枯黄暗淡"
+      ],
+      "answer": "乌黑光亮",
+      "explanation": "根据课文内容，燕子的羽毛是乌黑发亮的。",
+      "audio": {
+        "question": "/audio/d3/d3018129f693302f49c3735200f804e8c961dbfd.mp3",
+        "options": [
+          "/audio/d5/d541462389fe89186391aed4472dd55fc88a8f7e.mp3",
+          "/audio/a7/a7febb7ca181c35e51992ed264ca5c805c85cb3e.mp3",
+          "/audio/43/435f99f58e4cbbb5984fceb5f1af7bfdd4782b4d.mp3",
+          "/audio/be/be7e9ec93a12f16cfb91369814eabf7b358d6b61.mp3"
+        ],
+        "explanation": "/audio/fa/facdbe8640f856f771c77b241e7f5372552f53ea.mp3"
+      }
+    },
+    {
+      "id": 18,
+      "type": "fill_blank_text",
+      "score": 5,
+      "difficulty": 2,
+      "knowledge_point": "燕子的外形与动态描写顺序",
+      "question": "课文中描写小燕子飞行时的姿态，用到了“（___）”字，表现了动作的灵敏。",
+      "options": [],
+      "answer": "掠",
+      "explanation": "“掠”字精准表现了燕子划过水面的轻快。",
+      "audio": {
+        "question": "/audio/fc/fc551a7d82a95b6bf71d7c3bf18659c39e5e343d.mp3",
+        "explanation": "/audio/7e/7e2c2a39793ac42b902395c915e7650433f32aed.mp3"
+      }
+    },
+    {
+      "id": 19,
+      "type": "matching",
+      "score": 5,
+      "difficulty": 1,
+      "knowledge_point": "燕子的外形与动态描写顺序",
+      "question": "请将描写动作的词语与相应的动物连线。",
+      "options": [
+        "燕子",
+        "鸳鸯",
+        "鸭子",
+        "河豚",
+        "滑过水面",
+        "沙上安睡",
+        "水中嬉戏",
+        "逆流而上"
+      ],
+      "answer": "A-1,B-2,C-3,D-4",
+      "explanation": "根据本单元课文和古诗意境内容进行对应。",
+      "audio": {
+        "question": "/audio/44/444b5667c7233d211a3fffa8d4cdd8a9c197bead.mp3",
+        "options": [
+          "/audio/0a/0a6196e7629e76799b11f5b2d4cef690db54a764.mp3",
+          "/audio/ce/ce715786a09b8ed836dc2ca8217f65bbd73b83db.mp3",
+          "/audio/8a/8af31593e07b9ae91429e42621b965682644bbfb.mp3",
+          "/audio/fb/fb0fa51a032ccdbf22e935f6682f29be6f129e3a.mp3",
+          "/audio/53/530db645552e51c4a4b0a1fc68ba3a8d7ca5a001.mp3",
+          "/audio/85/85e3f9cd91bdff36066cff39826b26e1a30a47e2.mp3",
+          "/audio/06/06a10f738c30d9c7d41b0065b4bc7d83c61e8e01.mp3",
+          "/audio/a8/a8a39b9be849c100952a0e24d9d958061ab6edcb.mp3"
+        ],
+        "explanation": "/audio/39/3979c8494b6d7147b04c15507c9bd58c40a3ea39.mp3"
+      }
+    },
+    {
+      "id": 22,
+      "type": "word_order",
+      "score": 5,
+      "difficulty": 2,
+      "knowledge_point": "燕子的外形与动态描写顺序",
+      "question": "请将下列词语排成描写燕子的句子。",
+      "options": [
+        "小燕子",
+        "带了",
+        "剪刀似的",
+        "从南方",
+        "飞回来了",
+        "尾巴"
+      ],
+      "answer": "小燕子,带了,剪刀似的,尾巴,从南方,飞回来了",
+      "explanation": "根据《燕子》第一自然段语序进行句式排列。",
+      "audio": {
+        "question": "/audio/51/51fefa4fd112c8dd5e97994b46c82000fee24cb1.mp3",
+        "options": [
+          "/audio/2d/2d336e63fc84aec8c8761c4d95ece2b0419dcc2e.mp3",
+          "/audio/93/937ce87182b7a8de5459f67c657ab06957844459.mp3",
+          "/audio/d8/d86da731d0aebde753ac962d3bda2ee8f36acadc.mp3",
+          "/audio/fa/fa76e4784ff9b550afd5bf7b9ad9f435a108a978.mp3",
+          "/audio/97/975d4aa755f4eb5b751244f05db2792bb16b98dd.mp3",
+          "/audio/3e/3ec6d0ba4a91832b27c930f74e59478137427cec.mp3"
+        ],
+        "explanation": "/audio/7e/7eabd2f6c0ad53211759251ea3a17cd9d3b094ba.mp3"
+      }
+    }
+  ],
+  "knowledge": {
+    "point": "燕子的外形与动态描写顺序",
+    "core_concept": "学习一种有序观察的方法：先写整体给人的印象，再由远及近或由表及里地描写局部特征。在动态描写中，通过寻找精准的动词（如“掠”“沾”）来体现生物的灵性。同时，学习用比喻、拟人将自然物与人文审美（如五线谱）联系起来。",
+    "key_formula": "灵动描写 = 观察顺序（外形-动作-休息）+ 精准动词 + 恰当比喻",
+    "common_mistakes": [
+      "描写顺序混乱，一会儿写头一会儿写尾巴又回到身体",
+      "用词太平淡，无法体现“轻盈”和“快”的感觉"
+    ],
+    "tips": "画一张燕子结构图，对着图按顺序背诵第一自然段，最能体会描写顺序。",
+    "audio": {
+      "point": "/audio/fe/fe46e5e53cdbdda365f6aed5a1de9a1ee1892704.mp3",
+      "core_concept": "/audio/6b/6b43ac93f760787061bb2218a470185f426b0cea.mp3",
+      "key_formula": "/audio/eb/eb2526c5d34e91df0faeb200d4cea4b4e5b733f6.mp3",
+      "tips": "/audio/9e/9e8a221b869f654773477f01a21e58f05c8153c8.mp3",
+      "common_mistakes": [
+        "/audio/04/04846595fd87b35d13a1750a4a5c9df310bd0033.mp3",
+        "/audio/8f/8fcd7c2e985479a2a9d2aefda2a8119890749e53.mp3"
+      ]
+    }
+  }
+}

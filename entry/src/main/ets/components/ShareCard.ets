@@ -63,7 +63,7 @@ export struct ShareCardButton {
       Row({ space: 8 }) {
         ForEach(this.streak?.week ?? [], (d: CalendarDay, i: number) => {
           Column({ space: 5 }) {
-            Text(i === (this.streak?.todayIndex ?? -1) ? '今' : weekdayLabel(d.dateKey)).fontSize(11).fontWeight(W.heavy)
+            Text(i === (this.streak?.todayIndex ?? -1) ? '今' : weekdayLabel(d.dateKey)).fontSize(F.micro).fontWeight(W.heavy)
               .fontColor('#D9FFFFFF')
             Stack() {
               Circle().width(30).height(30).fill(d.studied ? C.bee : '#38FFFFFF')

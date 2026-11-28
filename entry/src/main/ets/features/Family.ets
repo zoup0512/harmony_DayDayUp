@@ -141,36 +141,41 @@ export struct LearnerPicker {
 
   build() {
     Stack() {
-      ModalCard({ maxW: 380, onBackdrop: () => {
-        if (!LearnerStore.shared.pickerAuto) {
-          LearnerStore.shared.closePicker();
-        }
-      } }) {
-        Text('谁在学习？').fontSize(F.heading).fontWeight(W.heavy).fontColor(C.ink)
-        Text('点自己的名字，进入自己的进度').fontSize(F.caption).fontColor(C.inkMuted)
-        Flex({ wrap: FlexWrap.Wrap, justifyContent: FlexAlign.Center,
-          space: { main: LengthMetrics.vp(10), cross: LengthMetrics.vp(10) } }) {
-          ForEach(LearnerStore.shared.list, (p: LearnerProfile) => {
-            Column({ space: 6 }) {
-              LearnerAvatar({ name: p.name, color: p.color ?? 'green', sz: 52 })
-              Text(p.name).fontSize(F.caption).fontWeight(W.bold).fontColor(C.ink).maxLines(2)
-                .textAlign(TextAlign.Center)
-            }
-            .width(118)
-            .padding(12)
-            .backgroundColor(p.id === LearnerStore.shared.activeId ? alpha(C.primary, 0.12) : C.surface)
-            .borderRadius(R.card)
-            .border({ width: 2, radius: R.card, color: p.id === LearnerStore.shared.activeId ? C.primary : C.border })
-            .onClick(() => this.choose(p.id))
-            .accessibilityText(`${p.name}${p.id === LearnerStore.shared.activeId ? '，当前' : ''}`)
-          }, (p: LearnerProfile) => p.id)
-        }
-        .width('100%')
-        if (!LearnerStore.shared.pickerAuto) {
-          Text('取消').fontSize(F.caption).fontWeight(W.bold).fontColor(C.inkMuted).padding(10)
-            .onClick(() => LearnerStore.shared.closePicker())
+      Stack() {
+        ModalCard({ maxW: 380, onBackdrop: () => {
+          if (!LearnerStore.shared.pickerAuto) {
+            LearnerStore.shared.closePicker();
+          }
+        } }) {
+          Text('谁在学习？').fontSize(F.heading).fontWeight(W.heavy).fontColor(C.ink)
+          Text('点自己的名字，进入自己的进度').fontSize(F.caption).fontColor(C.inkMuted)
+          Flex({ wrap: FlexWrap.Wrap, justifyContent: FlexAlign.Center,
+            space: { main: LengthMetrics.vp(10), cross: LengthMetrics.vp(10) } }) {
+            ForEach(LearnerStore.shared.list, (p: LearnerProfile) => {
+              Column({ space: 6 }) {
+                LearnerAvatar({ name: p.name, color: p.color ?? 'green', sz: 52 })
+                Text(p.name).fontSize(F.caption).fontWeight(W.bold).fontColor(C.ink).maxLines(2)
+                  .textAlign(TextAlign.Center)
+              }
+              .width(118)
+              .padding(12)
+              .backgroundColor(p.id === LearnerStore.shared.activeId ? alpha(C.primary, 0.12) : C.surface)
+              .borderRadius(R.card)
+              .border({ width: 2, radius: R.card, color: p.id === LearnerStore.shared.activeId ? C.primary : C.border })
+              .onClick(() => this.choose(p.id))
+              .accessibilityText(`${p.name}${p.id === LearnerStore.shared.activeId ? '，当前' : ''}`)
+            }, (p: LearnerProfile) => p.id)
+          }
+          .width('100%')
+          if (!LearnerStore.shared.pickerAuto) {
+            Text('取消').fontSize(F.caption).fontWeight(W.bold).fontColor(C.inkMuted).padding(10)
+              .onClick(() => LearnerStore.shared.closePicker())
+          }
         }
       }
+      .width('100%')
+      .height('100%')
+      .accessibilityLevel(this.gateReason.length > 0 ? 'no-hide-descendants' : 'auto')
       if (this.gateReason.length > 0) {
         ParentGate({
           reason: this.gateReason,
@@ -573,6 +578,7 @@ export struct LearnersPage {
       .width('100%')
       .height('100%')
       .backgroundColor(C.bg)
+      .accessibilityLevel(this.editMode !== 'none' || this.deleteId.length > 0 || this.pinOpen || this.gateReason.length > 0 ? 'no-hide-descendants' : 'auto')
 
       if (this.editMode !== 'none') {
         this.editDialog()
@@ -760,6 +766,7 @@ export struct ParentOverviewPage {
       .width('100%')
       .height('100%')
       .backgroundColor(C.bg)
+      .accessibilityLevel(this.gateReason.length > 0 ? 'no-hide-descendants' : 'auto')
 
       if (this.gateReason.length > 0) {
         ParentGate({

@@ -193,7 +193,7 @@ export struct ChunkyButton {
       case 'secondary':
         return C.secondary;
       case 'reward':
-        return C.dark ? '#735C31' : '#FFE194';
+        return C.tone('reward_button_bg');
       case 'danger':
         return C.danger;
       case 'ghost':
@@ -208,7 +208,7 @@ export struct ChunkyButton {
       case 'primary':
         return C.theme === null ? '#163C1A' : '#FFFFFF';
       case 'reward':
-        return C.dark ? '#FFF3CC' : '#704810';
+        return C.tone('reward_button_fg');
       case 'ghost':
         return C.inkLight;
       case 'disabled':
@@ -498,43 +498,77 @@ export struct TitleBar {
   };
 
   build() {
-    Row() {
+    Column() {
       Row() {
-        if (this.showBack) {
-          Row() {
-            DuoIcon({ name: 'chevronLeft', sz: 22, color: C.inkMuted })
+        Row() {
+          if (this.showBack) {
+            Row() {
+              DuoIcon({ name: 'chevronLeft', sz: 22, color: C.inkMuted })
+            }
+            .width(44)
+            .height(44)
+            .justifyContent(FlexAlign.Center)
+            .onClick(() => {
+              Haptics.tap();
+              this.onBack();
+            })
+            .accessibilityText('返回')
           }
-          .width(44)
-          .height(44)
-          .justifyContent(FlexAlign.Center)
-          .onClick(() => {
-            Haptics.tap();
-            this.onBack();
-          })
-          .accessibilityText('返回')
         }
-      }
-      .width(60)
+        .width(60)
 
-      Text(this.title)
-        .fontSize(F.button)
-        .fontWeight(W.heavy)
-        .fontColor(C.ink)
-        .maxLines(1)
-        .textOverflow({ overflow: TextOverflow.Ellipsis })
-        .layoutWeight(1)
-        .textAlign(TextAlign.Center)
-      Row() {
-        this.trailing()
+        Text(this.title)
+          .fontSize(F.button)
+          .fontWeight(W.heavy)
+          .fontColor(C.ink)
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+          .layoutWeight(1)
+          .textAlign(TextAlign.Center)
+        Row() {
+          this.trailing()
+        }
+        .width(60)
+        .justifyContent(FlexAlign.End)
       }
-      .width(60)
-      .justifyContent(FlexAlign.End)
+      .width('100%')
+      .height(52)
+      .padding({ left: 4, right: 8 })
+      .border({ width: { bottom: 1 }, color: C.border })
     }
     .width('100%')
-    .height(52)
-    .padding({ left: 4, right: 8 })
     .backgroundColor(C.bg)
-    .border({ width: { bottom: 1 }, color: C.border })
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP])
+  }
+}
+
+@ComponentV2
+export struct TabHeader {
+  @Param title: string = '';
+  @Param collapsed: boolean = false;
+  @BuilderParam trailing: () => void = emptyBuilder;
+
+  build() {
+    Column() {
+      Row({ space: 10 }) {
+        Text(this.title)
+          .fontSize(this.collapsed ? F.button + 1 : F.title)
+          .fontWeight(W.heavy)
+          .fontColor(C.ink)
+          .maxLines(1)
+          .layoutWeight(1)
+          .accessibilityLevel('yes')
+        this.trailing()
+      }
+      .width('100%')
+      .height(this.collapsed ? 50 : 62)
+      .padding({ left: 18, right: 18 })
+      .border({ width: { bottom: 1 }, color: this.collapsed ? C.border : Color.Transparent })
+      .animation({ curve: Motion.reveal() })
+    }
+    .width('100%')
+    .backgroundColor(C.bg)
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP])
   }
 }
 

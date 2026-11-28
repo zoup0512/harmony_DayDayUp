@@ -23,6 +23,7 @@ const K_REMINDER = 'cstf.streakReminder';
 const K_HOUR = 'cstf.reminderHour';
 const K_MINUTE = 'cstf.reminderMinute';
 const K_KIDS = 'cstf.kidsMode';
+const K_ADVANCE = 'cstf.autoAdvance';
 
 @ObservedV2
 export class SettingsStore {
@@ -32,6 +33,7 @@ export class SettingsStore {
 
   @Trace isMuted: boolean = false;
   @Trace autoNarrate: boolean = true;
+  @Trace autoAdvance: boolean = true;
   @Trace hapticEnabled: boolean = true;
   @Trace appearance: AppAppearance = 'light';
   @Trace streakReminderEnabled: boolean = false;
@@ -74,6 +76,7 @@ export class SettingsStore {
     const p = this.prefs;
     this.isMuted = p.getSync(K_MUTED, false) as boolean;
     this.autoNarrate = p.getSync(K_AUTO, true) as boolean;
+    this.autoAdvance = p.getSync(K_ADVANCE, true) as boolean;
     this.hapticEnabled = p.getSync(K_HAPTIC, true) as boolean;
     const raw = p.getSync(K_APPEARANCE, 'light') as string;
     this.appearance = (raw === 'system' || raw === 'dark') ? raw : 'light';
@@ -111,6 +114,11 @@ export class SettingsStore {
   setAutoNarrate(v: boolean): void {
     this.autoNarrate = v;
     this.put(K_AUTO, v);
+  }
+
+  setAutoAdvance(v: boolean): void {
+    this.autoAdvance = v;
+    this.put(K_ADVANCE, v);
   }
 
   setHaptic(v: boolean): void {

@@ -465,7 +465,8 @@ export struct CardAlbumPage {
           }).accessibilityText('返回')
           Text('知识卡册').fontSize(F.heading).fontWeight(W.heavy).fontColor(C.ink)
         }
-        .width('100%').height(52).padding({ left: 10 }).backgroundColor(C.studyHeader)
+        .width('100%').constraintSize({ minHeight: 52 }).padding({ left: 10 }).backgroundColor(C.studyHeader)
+        .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP])
         ForEach([this.rev], (r: number) => {
           Scroll() {
             Column({ space: S.xl }) {
@@ -521,6 +522,7 @@ export struct CardAlbumPage {
       .width('100%')
       .height('100%')
       .backgroundColor(C.bg)
+      .accessibilityLevel(this.detail !== null || this.guardianUnit !== null ? 'no-hide-descendants' : 'auto')
 
       if (this.detail !== null) {
         this.detailModal()

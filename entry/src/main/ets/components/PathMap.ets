@@ -186,8 +186,13 @@ export struct PathMap {
     }
   }
 
+  @Computed
+  get currentLessonIndex(): number {
+    return this.lessons.findIndex((n: PathMapNode) => n.kind === 'lesson' && n.status === 'current');
+  }
+
   private currentMainlineId(): string {
-    return this.lessons.find((n: PathMapNode) => n.status === 'current' && n.kind !== 'exam')?.id ?? '';
+    return this.lessons[this.currentLessonIndex]?.id ?? '';
   }
 
   @Computed
@@ -283,8 +288,7 @@ export struct PathMap {
   }
 
   private scrollToCurrent(animated: boolean): void {
-    const id = this.currentMainlineId();
-    const idx = this.lessons.findIndex((n: PathMapNode) => n.id === id);
+    const idx = this.currentLessonIndex;
     if (idx < 0) {
       return;
     }
@@ -310,33 +314,33 @@ export struct PathMap {
 
   private topColor(n: PathMapNode): string {
     if (n.status === 'locked' || n.chestClaimed) {
-      return C.dark ? C.lockedNodeTop : '#E5EAE3';
+      return C.tone('path_locked_top');
     }
     if (n.kind !== 'lesson') {
       return n.kind === 'exam' && !n.conquered ? C.beetle : C.bee;
     }
     if (n.status === 'completed') {
-      return C.dark ? '#4B6341' : '#CCE6A3';
+      return C.tone('path_done_top');
     }
     return C.primary === C.feather ? '#71CF46' : C.primary;
   }
 
   private ledgeColor(n: PathMapNode): string {
     if (n.status === 'locked' || n.chestClaimed) {
-      return C.dark ? C.lockedNodeLedge : '#B5BFAF';
+      return C.tone('path_locked_ledge');
     }
     if (n.kind !== 'lesson') {
       return n.kind === 'exam' && !n.conquered ? '#A45FD6' : '#CC9E00';
     }
-    return n.status === 'completed' ? (C.dark ? '#374930' : '#97B970') :
+    return n.status === 'completed' ? C.tone('path_done_ledge') :
       (C.primary === C.feather ? '#478B30' : C.primaryDark);
   }
 
   private iconColor(n: PathMapNode): string {
     if (n.status === 'locked' || n.chestClaimed) {
-      return C.dark ? C.inkMuted : '#788676';
+      return C.tone('path_locked_icon');
     }
-    return n.status === 'completed' && n.kind === 'lesson' ? (C.dark ? '#FFE9A3' : '#859A42') : '#FFFFFF';
+    return n.status === 'completed' && n.kind === 'lesson' ? C.tone('path_done_icon') : '#FFFFFF';
   }
 
   private statusLabel(n: PathMapNode): string {
@@ -411,15 +415,15 @@ export struct PathMap {
         .borderRadius(R.card).clip(true).hitTestBehavior(HitTestMode.None)
       Row({ space: 8 }) {
         Column({ space: 3 }) {
-          Text(b.label).fontSize(F.micro).fontWeight(W.bold).fontColor(C.dark ? '#EFCF90' : '#80551C')
-          Text(b.unitTitle).fontSize(F.heading).fontWeight(W.heavy).fontColor(C.dark ? '#FFF1C8' : '#654416')
+          Text(b.label).fontSize(F.micro).fontWeight(W.bold).fontColor(C.tone('unit_banner_label'))
+          Text(b.unitTitle).fontSize(F.heading).fontWeight(W.heavy).fontColor(C.tone('unit_banner_title'))
             .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
         }
         .alignItems(HorizontalAlign.Start)
         .layoutWeight(1)
 
         if (this.isUnitLocked(b.unitNumber)) {
-          Text('跳到这里').fontSize(F.micro).fontWeight(W.bold).fontColor(C.dark ? '#FFF1C8' : '#654416')
+          Text('跳到这里').fontSize(F.micro).fontWeight(W.bold).fontColor(C.tone('unit_banner_title'))
             .padding({ left: 9, right: 9 }).height(38)
             .onClick(() => {
               Haptics.tap();
@@ -430,11 +434,11 @@ export struct PathMap {
         }
 
         Row({ space: 4 }) {
-          DuoIcon({ name: 'book', sz: 16, color: C.dark ? '#FFF1C8' : '#72501F' })
-          Text('知识手册').fontSize(F.micro).fontWeight(W.bold).fontColor(C.dark ? '#FFF1C8' : '#72501F')
+          DuoIcon({ name: 'book', sz: 16, color: C.tone('unit_banner_action') })
+          Text('知识手册').fontSize(F.micro).fontWeight(W.bold).fontColor(C.tone('unit_banner_action'))
         }
         .padding({ left: 10, right: 10, top: 8, bottom: 8 })
-        .backgroundColor(C.dark ? C.surface : '#FFF7D6')
+        .backgroundColor(C.tone('unit_banner_chip'))
         .border({ width: 1, radius: 18, color: C.rewardBorder })
         .onClick(() => {
           Haptics.tap();
@@ -449,9 +453,9 @@ export struct PathMap {
     }
     .width(this.stageW)
     .height(BANNER_H)
-    .linearGradient({ angle: 110, colors: [[C.rewardSurface, 0], [C.dark ? '#57472D' : '#FFE08B', 1]] })
+    .linearGradient({ angle: 110, colors: [[C.rewardSurface, 0], [C.tone('unit_banner_gradient_end'), 1]] })
     .border({ width: 1, radius: R.card, color: C.rewardBorder })
-    .shadow({ radius: 1, offsetY: 3, color: C.dark ? '#382D1B' : '#DFB653' })
+    .shadow({ radius: 1, offsetY: 3, color: C.tone('unit_banner_shadow') })
     .position({ x: 0, y: this.bannerTop(b.firstIndex) })
   }
 
@@ -613,10 +617,17 @@ export struct PathMap {
     return idx >= 0 ? this.lessons[idx] : null;
   }
 
-  private currentViewportY(): number | null {
-    const id = this.currentMainlineId();
-    const idx = this.lessons.findIndex((n: PathMapNode) => n.id === id);
-    return idx < 0 ? null : this.posY(idx) - this.scrollY;
+  @Computed
+  get returnDirection(): 'up' | 'down' | null {
+    const idx = this.currentLessonIndex;
+    if (idx < 0) {
+      return null;
+    }
+    const y = this.posY(idx) - this.scrollY;
+    if (y <= 40) {
+      return 'up';
+    }
+    return y >= this.viewportH - 40 ? 'down' : null;
   }
 
   build() {
@@ -627,7 +638,7 @@ export struct PathMap {
             ForEach(this.lessons, (n: PathMapNode, i: number) => {
               if (i + 1 < this.lessons.length && this.lessons[i + 1].unitNumber === n.unitNumber) {
                 Path().commands(this.connector(i)).width(this.stageW).height(this.posY(i + 1) - this.posY(i))
-                  .fill(Color.Transparent).stroke(C.dark ? '#54684C' : '#CBDDBA').strokeWidth(4.5)
+                  .fill(Color.Transparent).stroke(C.tone('path_trail')).strokeWidth(4.5)
                   .strokeDashArray([0.1, 9]).strokeLineCap(LineCapStyle.Round)
                   .position({ x: 0, y: this.posY(i) }).hitTestBehavior(HitTestMode.None)
               }
@@ -678,22 +689,24 @@ export struct PathMap {
       if (this.stickyNode() !== null) {
         Row({ space: 10 }) {
           Column({ space: 1 }) {
-            Text((this.stickyNode() as PathMapNode).displayLabel).fontSize(F.micro).fontWeight(W.bold).fontColor(C.dark ? '#EFCF90' : '#80551C')
-            Text((this.stickyNode() as PathMapNode).unitTitle).fontSize(F.caption).fontWeight(W.bold).fontColor(C.dark ? '#FFF1C8' : '#654416')
+            Text((this.stickyNode() as PathMapNode).displayLabel).fontSize(F.micro).fontWeight(W.bold).fontColor(C.tone('unit_banner_label'))
+            Text((this.stickyNode() as PathMapNode).unitTitle).fontSize(F.caption).fontWeight(W.bold).fontColor(C.tone('unit_banner_title'))
               .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
           }
           .alignItems(HorizontalAlign.Start)
           .layoutWeight(1)
 
           Stack() {
-            DuoIcon({ name: 'book', sz: 16, color: C.dark ? '#FFF1C8' : '#654416' })
+            DuoIcon({ name: 'book', sz: 16, color: C.tone('unit_banner_title') })
           }
           .width(36)
           .height(32)
+          .responseRegion({ x: '-20%', y: '-20%', width: '140%', height: '140%' })
           .onClick(() => {
             Haptics.tap();
             this.onGuideTap((this.stickyNode() as PathMapNode).unitNumber);
           })
+          .accessibilityText('知识手册')
         }
         .padding({ left: 14, right: 14, top: 8, bottom: 8 })
         .margin({ left: 16, right: 16, top: 6 })
@@ -703,18 +716,21 @@ export struct PathMap {
         .transition(TransitionEffect.OPACITY)
       }
 
-      if (this.currentViewportY() !== null &&
-        ((this.currentViewportY() as number) <= 40 || (this.currentViewportY() as number) >= this.viewportH - 40)) {
-        Row({ space: 6 }) {
-          DuoIcon({ name: (this.currentViewportY() as number) <= 40 ? 'arrowUp' : 'arrowDown', sz: 13, color: '#FFFFFF' })
-          Text('回到当前').fontSize(F.caption).fontWeight(W.bold).fontColor('#FFFFFF')
+      if (this.returnDirection !== null) {
+        Button({ type: ButtonType.Circle }) {
+          Stack() {
+            Image($r('app.media.ic_lesson_compass_dial'))
+              .width('100%').height('100%')
+              .rotate({ angle: this.returnDirection === 'up' ? 0 : 180 })
+            Image($r('app.media.ic_lesson_compass_panda'))
+              .width('100%').height('100%')
+          }
+          .width('100%').height('100%')
+          .accessibilityLevel('no-hide-descendants')
         }
-        .padding({ left: 16, right: 16, top: 10, bottom: 10 })
-        .backgroundColor(C.secondary)
-        .borderRadius(999)
-        .border({ width: 2, color: C.secondaryDark, radius: 999 })
-        .shadow({ radius: 6, color: '#2E000000', offsetY: 3 })
-        .position({ right: 16, bottom: 28 })
+        .width(56).height(56).padding(0)
+        .backgroundColor(Color.Transparent)
+        .position({ right: 16, bottom: 16 })
         .onClick(() => {
           Haptics.tap();
           SFXEngine.shared.play('tap');

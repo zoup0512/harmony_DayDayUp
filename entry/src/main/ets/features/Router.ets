@@ -80,9 +80,11 @@ export class AppRoute {
 export class Router {
   static readonly shared: Router = new Router();
 
-  // 路由栈即数组——Index 用 ForEach 自绘全屏页（Navigation 组件在本机内容区不渲染，弃用）。
+  // routes 是 stack（Index 的 Navigation 绑定的 NavPathStack）的镜像：所有跳转都经由 Router，两者同步变化。
   // @Trace 跨组件字段在这台机器上实测不派发，靠显式监听 + @Local 镜像驱动重绘。
   @Trace routes: AppRoute[] = [];
+  readonly stack: NavPathStack = new NavPathStack();
+  private overlayBack: () => boolean = () => false;
   private listeners: Array<() => void> = [];
   /** 栈顶页面可拦截系统返回（例如做题中弹「确定退出」），返回 true 表示已处理。 */
   private backInterceptors: Array<() => boolean> = [];
@@ -102,8 +104,15 @@ export class Router {
     };
   }
 
+  setOverlayBack(cb: () => boolean): void {
+    this.overlayBack = cb;
+  }
+
   /** 系统返回：先给最近注册的拦截器，再弹栈。栈空时返回 false 交给系统。 */
   handleBack(): boolean {
+    if (this.overlayBack()) {
+      return true;
+    }
     const n = this.backInterceptors.length;
     if (n > 0 && this.backInterceptors[n - 1]()) {
       return true;
@@ -121,6 +130,7 @@ export class Router {
 
   push(route: AppRoute): void {
     this.routes = this.routes.concat([route]);
+    this.stack.pushPath({ name: route.name, param: route });
     this.emit();
   }
 
@@ -129,23 +139,26 @@ export class Router {
       return;
     }
     this.routes = this.routes.slice(0, this.routes.length - 1);
+    this.stack.pop();
     this.emit();
   }
 
   /** 替换栈顶（例如课程结束 → 结算页）。 */
   replaceTop(route: AppRoute): void {
     this.routes = this.routes.slice(0, Math.max(0, this.routes.length - 1)).concat([route]);
+    this.stack.replacePath({ name: route.name, param: route });
     this.emit();
   }
 
-  clear(): void {
+  clear(animated: boolean = true): void {
     this.routes = [];
+    this.stack.clear(animated);
     this.emit();
   }
 
   /** 清空后再推一个页面。 */
   reset(route: AppRoute): void {
-    this.clear();
+    this.clear(false);
     this.push(route);
   }
 

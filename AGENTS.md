@@ -110,5 +110,16 @@
   it in `aboutToDisappear` (dead listeners leak and re-run rebuilds).
 - System back: `Index.onBackPress` → `Router.handleBack()`; pages with modal
   state register `Router.shared.interceptBack(() => boolean)` (true = handled).
-- Theme/dark: `Palette.apply()` from `Index.applyPalette()`; on change the whole
-  shell re-mounts via `ForEach([themeRev])` because `C.xxx` is read at build time.
+- Navigation: `Index` hosts `Navigation(Router.shared.stack)` + `NavDestination` per route
+  (system transitions, edge-swipe back). Always go through `Router` (it mirrors `routes` and the
+  `NavPathStack`); back = overlay → page interceptor → pop, from both `onBackPress` and
+  `NavDestination.onBackPressed`. Pushed pages hide the tab bar.
+- Colors: mode-dependent values live in `resources/{base,dark}/element/color.json`; `C.load()`
+  (EntryAbility.onCreate) reads both variants and `C.tone(name)` / the `C.xxx` getters return
+  strings. Add new light/dark pairs there (+ `ToneName`), never inline `C.dark ? a : b`.
+  Dark toggles refresh live through `@Trace` (verified on device); only equipping a UI theme
+  re-mounts the shell via `ForEach([themeRev])`.
+- In-page modals: give the content layer `accessibilityLevel(open ? 'no-hide-descendants' : 'auto')`.
+- Headers: Tab roots use `TabHeader` (collapses on scroll), pushed pages `TitleBar`; colored headers
+  extend under the status bar with `expandSafeArea` (not on fixed-height nodes — wrap them).
+- Source files are CRLF; `sed -i` in Git Bash rewrites them as LF — edit with a CRLF-aware tool.

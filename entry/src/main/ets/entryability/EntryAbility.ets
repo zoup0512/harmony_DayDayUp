@@ -3,6 +3,7 @@
 import { AbilityConstant, Configuration, ConfigurationConstant, UIAbility, Want } from '@kit.AbilityKit';
 import { window } from '@kit.ArkUI';
 import { AppEnv } from '../services/Files';
+import { C } from '../design/Theme';
 import { ProgressStore } from '../stores/ProgressStore';
 import { AudioPlayer } from '../services/Audio';
 import { SettingsStore } from '../stores/SettingsStore';
@@ -12,6 +13,7 @@ export default class EntryAbility extends UIAbility {
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     try {
       AppEnv.context = this.context;
+      C.load(this.context);
       SettingsStore.shared.setSystemDark(this.context.config.colorMode === ConfigurationConstant.ColorMode.COLOR_MODE_DARK);
     } catch (e) {
       // context 必须可用；启动失败会在页面呈现加载错误

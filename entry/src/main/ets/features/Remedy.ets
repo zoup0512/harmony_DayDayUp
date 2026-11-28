@@ -271,6 +271,7 @@ export struct RemedyPage {
     .width('100%')
     .padding({ left: 18, right: 18, top: 9, bottom: 13 })
     .backgroundColor(C.studyHeader)
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP])
   }
 
   @Builder
@@ -557,6 +558,7 @@ export struct RemedyPage {
       .width('100%')
       .height('100%')
       .backgroundColor(C.bg)
+      .accessibilityLevel(this.showHelp ? 'no-hide-descendants' : 'auto')
 
       if (this.showHelp) {
         this.helpModal()

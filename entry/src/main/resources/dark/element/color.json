@@ -1,5 +1,37 @@
 {
   "color": [
-    { "name": "start_window_background", "value": "#131F24" }
+    { "name": "start_window_background", "value": "#131F24" },
+    { "name": "ink", "value": "#FFFFFF" },
+    { "name": "ink_muted", "value": "#A4B8B0" },
+    { "name": "ink_softer", "value": "#93A7AF" },
+    { "name": "bg", "value": "#131F24" },
+    { "name": "bg_softer", "value": "#37464F" },
+    { "name": "surface", "value": "#202F36" },
+    { "name": "surface_alt", "value": "#37464F" },
+    { "name": "border", "value": "#37464F" },
+    { "name": "study_header", "value": "#254132" },
+    { "name": "reward_surface", "value": "#3B3426" },
+    { "name": "reward_border", "value": "#76613D" },
+    { "name": "locked_node_top", "value": "#37464F" },
+    { "name": "locked_node_ledge", "value": "#202F36" },
+    { "name": "tab_bar_bg", "value": "#131F24" },
+    { "name": "tab_active_ink", "value": "#61C63F" },
+    { "name": "reward_button_bg", "value": "#735C31" },
+    { "name": "reward_button_fg", "value": "#FFF3CC" },
+    { "name": "path_locked_top", "value": "#37464F" },
+    { "name": "path_done_top", "value": "#4B6341" },
+    { "name": "path_locked_ledge", "value": "#202F36" },
+    { "name": "path_done_ledge", "value": "#374930" },
+    { "name": "path_locked_icon", "value": "#A4B8B0" },
+    { "name": "path_done_icon", "value": "#FFE9A3" },
+    { "name": "path_trail", "value": "#54684C" },
+    { "name": "unit_banner_label", "value": "#EFCF90" },
+    { "name": "unit_banner_title", "value": "#FFF1C8" },
+    { "name": "unit_banner_action", "value": "#FFF1C8" },
+    { "name": "unit_banner_chip", "value": "#202F36" },
+    { "name": "unit_banner_gradient_end", "value": "#57472D" },
+    { "name": "unit_banner_shadow", "value": "#382D1B" },
+    { "name": "lesson_figure_bg", "value": "#3B3426" },
+    { "name": "option_wrong_ink", "value": "#FF8A8A" }
   ]
 }
