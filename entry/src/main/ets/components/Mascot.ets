@@ -21,7 +21,7 @@ export struct Mascot {
   @Param skin: string = '';
   @Param allowsTap: boolean = false;
   @Param still: boolean = false;
-  @Param illustrated: boolean = false;
+  @Param illustrated: boolean = true;
 
   @Local equippedSkin: string = ProgressStore.shared.equippedMascotSkin;
   @Local breatheY: number = 0;
