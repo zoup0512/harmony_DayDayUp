@@ -59,6 +59,41 @@
 - `sealedChests` / `knowledgeCards` are NOT in BackupEnvelope v1; `importBackup`
   keeps the local ones.
 
+## Multi-child profiles (mirrors Web `lib/learnerProfiles.ts` / `lib/family.ts`)
+- `stores/LearnerStore.ets`: `cstf/learners.json` = `{version, activeId, learners[]}`. The
+  `default` child keeps the legacy `cstf/progress.json` + `cstf/prefs.json` (zero migration;
+  learners.json is only written on the first change); others live in `cstf/learners/<id>/`.
+- Child name = learner name (`ProgressStore.displayName` reads LearnerStore; `progress.displayName`
+  is only a mirror). Names ≤ 20 chars like Web.
+- `ProgressStore.shared` always follows the active child; `ProgressStore.forLearner(id)` gives a
+  separate instance for another child (returns `shared` for the active one — never two writers).
+  Only `shared` pushes the widget snapshot.
+- Switching = `Family.switchTo(id)` (stop audio, clear Router, `ProgressStore.shared.switchTo`);
+  Index resets tab/overlays when `LearnerStore.activeId` changes.
+- Cold start with >1 child: `LearnerStore.pickerAuto` → `LearnerPicker` overlay; `refreshForNow`
+  is skipped until a child is picked (it credits the daily login gems).
+- SettingsStore stays family-level (sound, appearance, reminders, kids mode).
+- Parent PIN: `services/ParentLock.ets` (salted sha256 in `cstf_settings` key `cstf.parentLock`,
+  10-min in-process unlock, adult-math "forgot PIN"). Guarded: child management, import, reset,
+  kids-mode toggle, parent overview, optional child switching.
+- Backup: optional top-level `learner` + `cstf-family-backup` (`validateAnyBackup`,
+  `makeFamilyEnvelope`); keep in sync with `packages/core/src/backup.ts`.
+- Pages that host a gate keep `gateReason` + `gateAction` and render `ParentGate`; subscribe to
+  `LearnerStore.onChange` anywhere child names/counts are shown.
+
+## Device testing via hdc (wireless device in use)
+- hdc: `C:\Program Files\Huawei\DevEco Studio\sdk\default\openharmony\toolchains\hdc.exe`;
+  install `hdc install -r entry/build/default/outputs/default/entry-default-signed.hap`,
+  launch `hdc shell aa start -a EntryAbility -b org.chinatextbook.study`.
+- App sandbox (debug build): `/data/app/el2/100/base/org.chinatextbook.study/haps/entry/files/cstf/`
+  (readable with `hdc shell cat`). Back it up before testing on the real device.
+- Drive UI with `uitest dumpLayout` + `uitest uiInput click/inputText`; `accessibilityText` and
+  TextInput placeholders are NOT in the dump (find inputs by `type`, swatches by bounds).
+- Screenshots go black while a password TextInput is focused (secure input) — assert via dump.
+- Git Bash mangles device paths in `hdc file send` → prefix with `MSYS_NO_PATHCONV=1`.
+- Setting a TextInput's bound text programmatically fires `onChange` — don't clear error
+  messages there unconditionally.
+
 ## Repo hygiene
 - Standalone repo; parent congcong-school ignores `apps/harmony/`.
 - `build-profile.json5` is committed WITHOUT signing (`signingConfigs: []`).

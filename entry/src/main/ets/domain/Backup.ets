@@ -56,11 +56,19 @@ export interface DataPayload {
   leagueWeekKey?: string | null;
 }
 
+/** 存档归属的孩子（v1 内可选的顶层元数据，与 core BackupLearner 一致；旧端忽略）。 */
+export interface BackupLearner {
+  id: string;
+  name: string;
+  color?: string | null;
+}
+
 export interface BackupEnvelope {
   schema: string;
   version: number;
   exportedAt: string;
   platform: string;
+  learner?: BackupLearner | null;
   data: DataPayload;
 }
 
@@ -265,9 +273,114 @@ export function validateBackup(raw: string): BackupValidation {
     version: version,
     exportedAt: strOf(t, 'exportedAt') ?? '',
     platform: platform,
+    learner: learnerOf(t['learner']),
     data: decodePayload(t['data'] as JsonObj)
   };
   return new BackupValidation(env, null);
+}
+
+const LEARNER_ID_RE: RegExp = new RegExp('^[a-zA-Z0-9-]{1,64}$');
+
+/** 归属元数据坏了不致命：丢掉，导入端按「未标明孩子」处理。 */
+function learnerOf(v: Object | undefined | null): BackupLearner | null {
+  if (!isObj(v)) {
+    return null;
+  }
+  const o = v as JsonObj;
+  const id = strOf(o, 'id');
+  const name = (strOf(o, 'name') ?? '').trim();
+  if (id === null || !LEARNER_ID_RE.test(id) || name.length === 0) {
+    return null;
+  }
+  return { id: id, name: name.substring(0, 20), color: strOf(o, 'color') };
+}
+
+// ============================================================
+// 全家备份：一个文件装多个孩子的单人信封（core FAMILY_BACKUP_SCHEMA 的镜像）
+// ============================================================
+
+export const FAMILY_BACKUP_SCHEMA: string = 'cstf-family-backup';
+export const FAMILY_BACKUP_VERSION: number = 1;
+
+export interface FamilyBackupEnvelope {
+  schema: string;
+  version: number;
+  exportedAt: string;
+  platform: string;
+  learners: BackupEnvelope[];
+}
+
+export function makeFamilyEnvelope(learners: BackupEnvelope[], exportedAt: Date = new Date()): FamilyBackupEnvelope {
+  return {
+    schema: FAMILY_BACKUP_SCHEMA, version: FAMILY_BACKUP_VERSION, exportedAt: isoString(exportedAt),
+    platform: 'harmony', learners: learners
+  };
+}
+
+export class AnyBackupValidation {
+  family: boolean;
+  entries: BackupEnvelope[];
+  exportedAt: string;
+  /** 致命原因（entries 为空时） */
+  error: string | null;
+  /** 全家备份里被跳过的条目数 */
+  skipped: number;
+
+  constructor(family: boolean, entries: BackupEnvelope[], exportedAt: string, error: string | null, skipped: number) {
+    this.family = family;
+    this.entries = entries;
+    this.exportedAt = exportedAt;
+    this.error = error;
+    this.skipped = skipped;
+  }
+}
+
+/** 单人存档与全家备份都收；全家备份里坏条目跳过、重复孩子 id 降级为未标明，一个都读不出才拒收。 */
+export function validateAnyBackup(raw: string): AnyBackupValidation {
+  let top: Object | null = null;
+  try {
+    top = JSON.parse(raw) as Object;
+  } catch (e) {
+    return new AnyBackupValidation(false, [], '', '备份内容不是 JSON 对象', 0);
+  }
+  if (!isObj(top) || (top as JsonObj)['schema'] !== FAMILY_BACKUP_SCHEMA) {
+    const single = validateBackup(raw);
+    return single.envelope === null ? new AnyBackupValidation(false, [], '', single.error, 0) :
+      new AnyBackupValidation(false, [single.envelope], single.envelope.exportedAt, null, 0);
+  }
+  const t = top as JsonObj;
+  const version = intOf(t, 'version');
+  if (version === null || version < 1) {
+    return new AnyBackupValidation(true, [], '', '备份版本号缺失或不合法', 0);
+  }
+  const list = t['learners'];
+  if (!Array.isArray(list)) {
+    return new AnyBackupValidation(true, [], '', '全家备份缺少 learners 列表', 0);
+  }
+  const entries: BackupEnvelope[] = [];
+  const seen = new Set<string>();
+  let skipped = 0;
+  (list as Object[]).forEach((item: Object) => {
+    const v = validateBackup(JSON.stringify(item));
+    if (v.envelope === null) {
+      skipped++;
+      return;
+    }
+    const env = v.envelope;
+    const owner = env.learner;
+    if (owner !== undefined && owner !== null) {
+      if (seen.has(owner.id)) {
+        env.learner = null;
+      } else {
+        seen.add(owner.id);
+      }
+    }
+    entries.push(env);
+  });
+  if (entries.length === 0) {
+    return new AnyBackupValidation(true, [], '', '全家备份里没有可导入的孩子', skipped);
+  }
+  return new AnyBackupValidation(true, entries, strOf(t, 'exportedAt') ?? '', null, skipped);
 }
 
 function flagMap(ids: string[]): Record<string, boolean> {

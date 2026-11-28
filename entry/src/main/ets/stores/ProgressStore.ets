@@ -17,6 +17,7 @@ import { DataLoader } from '../services/DataLoader';
 import { ReminderContext, StreakReminders } from '../services/Feedback';
 import { SettingsStore } from './SettingsStore';
 import { WidgetSync } from '../services/WidgetSync';
+import { LearnerProfile, LearnerStore } from './LearnerStore';
 
 interface Prefs {
   selectedGrade: number;
@@ -242,13 +243,49 @@ export class ProgressStore {
   @Trace dayKey: string = todayString();
 
   private loaded: boolean = false;
+  /** null = 跟随当前孩子（shared）；非 null = 只读写指定孩子的独立实例（家长总览 / 指定档案导入）。 */
+  private boundLearnerId: string | null = null;
+
+  private get learnerId(): string {
+    return this.boundLearnerId ?? LearnerStore.shared.activeId;
+  }
 
   private get progressPath(): string {
-    return `${AppEnv.cstfRoot()}/progress.json`;
+    return LearnerStore.shared.progressPath(this.learnerId);
   }
 
   private get prefsPath(): string {
-    return `${AppEnv.cstfRoot()}/prefs.json`;
+    return LearnerStore.shared.prefsPath(this.learnerId);
+  }
+
+  /** 指定孩子的进度；当前孩子永远返回 shared，避免两个实例互相覆盖存档。 */
+  static forLearner(id: string): ProgressStore {
+    if (id === LearnerStore.shared.activeId) {
+      return ProgressStore.shared;
+    }
+    const store = new ProgressStore();
+    store.boundLearnerId = id;
+    store.load();
+    return store;
+  }
+
+  /** 切换到另一个孩子：落盘当前、清空内存态、按新孩子的目录重新载入并刷新（登录奖励 / 联赛 / 提醒 / 卡片）。 */
+  switchTo(id: string): void {
+    if (this !== ProgressStore.shared || LearnerStore.shared.find(id) === null) {
+      return;
+    }
+    LearnerStore.shared.setActive(id);
+    this.loaded = false;
+    this.progress = freshProgress();
+    this.selectedGrade = 0;
+    this.activeBookId = null;
+    this.hasCompletedOnboarding = false;
+    this.pendingDailyReward = null;
+    this.lastReminderKey = '';
+    this.load();
+    this.refreshForNow();
+    WidgetSync.push(this.progress);
+    this.emit();
   }
 
   load(): void {
@@ -332,7 +369,9 @@ export class ProgressStore {
     } catch (e) {
       console.error(`[ProgressStore] save failed ${JSON.stringify(e)}`);
     }
-    WidgetSync.push(this.progress);
+    if (this === ProgressStore.shared) {
+      WidgetSync.push(this.progress);
+    }
   }
 
   private persistPrefs(): void {
@@ -1042,13 +1081,18 @@ export class ProgressStore {
     return this.progress.joinedDate ?? todayString();
   }
 
+  /** 昵称即孩子档案名（LearnerStore 为准，progress.displayName 只做镜像）。 */
   get displayName(): string {
-    return this.progress.displayName ?? '小学员';
+    return LearnerStore.shared.find(this.learnerId)?.name ?? (this.progress.displayName ?? '小学员');
   }
 
   setDisplayName(name: string): void {
+    if (LearnerStore.nameError(name) !== null) {
+      return;
+    }
+    LearnerStore.shared.rename(this.learnerId, name);
     const p = clone(this.progress);
-    p.displayName = name.length === 0 ? null : name;
+    p.displayName = name.trim();
     this.commit(p);
   }
 
@@ -1328,7 +1372,12 @@ export class ProgressStore {
   // ============================================================
 
   exportBackupEnvelope(now: Date = new Date()): BackupEnvelope {
-    return makeEnvelope(this.progress, now);
+    const env = makeEnvelope(this.progress, now);
+    const learner: LearnerProfile | null = LearnerStore.shared.find(this.learnerId);
+    if (learner !== null) {
+      env.learner = { id: learner.id, name: learner.name, color: learner.color ?? null };
+    }
+    return env;
   }
 
   importBackup(env: BackupEnvelope, now: Date = new Date()): void {
@@ -1394,7 +1443,8 @@ export class ProgressStore {
   /** 启动 / 回前台 / 跨日时调用：回心、发登录奖励、联赛结算、刷新提醒。 */
   refreshForNow(now: Date = new Date()): void {
     // 进度未载入前一律跳过——否则每日奖励会在 freshProgress 上误判、重复发奖。
-    if (!this.loaded) {
+    // 冷启动「谁在学习？」还没选：登录奖励 / 联赛结算要等选定的孩子。
+    if (!this.loaded || LearnerStore.shared.pickerAuto) {
       return;
     }
     this.tickHeartRecharge(now);

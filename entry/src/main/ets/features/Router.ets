@@ -3,7 +3,7 @@ import { LessonRunResult } from '../models/Types';
 
 export type RouteName = 'bookList' | 'bookDetail' | 'lesson' | 'lessonResult' | 'review' | 'reviewRunner' |
   'achievements' | 'stories' | 'storyReader' | 'reading' | 'passageReader' | 'shop' | 'profile' | 'settings' |
-  'guide' | 'jumpTest' | 'remedy' | 'cards';
+  'guide' | 'jumpTest' | 'remedy' | 'cards' | 'learners' | 'parent';
 
 export class AppRoute {
   name: RouteName;

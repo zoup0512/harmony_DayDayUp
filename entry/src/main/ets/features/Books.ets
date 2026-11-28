@@ -20,6 +20,8 @@ import { AppRoute, RouteName, Router } from './Router';
 import { QuestionPhase, QuestionRenderer, stemFontSize } from './Questions';
 import { gradeAnswer } from '../domain/Grade';
 import { renderMathText } from '../domain/MathText';
+import { LearnerStore } from '../stores/LearnerStore';
+import { LearnerAvatar } from './Family';
 
 function subjectIcon(s: SubjectId | null | undefined): string {
   return s === 'math' ? 'chart' : (s === 'english' ? 'books' : (s === 'science' ? 'sparkles' : 'book'));
@@ -108,8 +110,21 @@ export struct LearnHome {
   @Local mKids: boolean = SettingsStore.shared.kidsMode;
   @Local mCards: number = 0;
   @Local mDemons: number = 0;
+  /** 多孩子：当前孩子头像（只有不止一个孩子时显示）。 */
+  @Local mMulti: boolean = false;
+  @Local mLearnerName: string = '';
+  @Local mLearnerColor: string = 'green';
   private unsubSettings: () => void = () => {
   };
+  private unsubLearners: () => void = () => {
+  };
+
+  private syncLearner(): void {
+    const learners = LearnerStore.shared;
+    this.mMulti = learners.count > 1;
+    this.mLearnerName = learners.active.name;
+    this.mLearnerColor = learners.active.color ?? 'green';
+  }
 
   private rebuild(): void {
     this.mStreak = this.store.displayStreak;
@@ -142,12 +157,15 @@ export struct LearnHome {
   aboutToDisappear(): void {
     this.unsubStore();
     this.unsubSettings();
+    this.unsubLearners();
   }
 
   aboutToAppear(): void {
     this.unsubStore = this.store.onChange(() => {
       this.rebuild();
     });
+    this.unsubLearners = LearnerStore.shared.onChange(() => this.syncLearner());
+    this.syncLearner();
     this.unsubSettings = SettingsStore.shared.onChange(() => {
       this.mKids = SettingsStore.shared.kidsMode;
     });
@@ -162,6 +180,16 @@ export struct LearnHome {
   @Builder
   topBar() {
     Row({ space: 6 }) {
+      if (this.mMulti) {
+        Row() {
+          LearnerAvatar({ name: this.mLearnerName, color: this.mLearnerColor, sz: 32 })
+        }
+        .onClick(() => {
+          Haptics.tap();
+          LearnerStore.shared.openPicker();
+        })
+        .accessibilityText(`当前是${this.mLearnerName}，切换孩子`)
+      }
       Scroll() {
         Row({ space: 6 }) {
           ResourceBadge({ icon: 'flame', label: `${this.mStreak} 天`, tint: this.mStreak > 0 ? C.fox : C.inkSofter })

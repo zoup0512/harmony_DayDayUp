@@ -13,7 +13,11 @@ import { Files, AppEnv } from '../services/Files';
 import { fileIo as fs, picker } from '@kit.CoreFileKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { util } from '@kit.ArkTS';
-import { BackupEnvelope, makeEnvelope, validateBackup } from '../domain/Backup';
+import { BackupEnvelope, validateAnyBackup } from '../domain/Backup';
+import { LearnerStore, LEARNER_NAME_MAX } from '../stores/LearnerStore';
+import { ParentLock } from '../services/ParentLock';
+import { Family } from '../services/Family';
+import { ImportPlanDialog, ParentGate } from './Family';
 import {
   BadgeData, ShareCardButton, StreakShareData
 } from '../components/ShareCard';
@@ -66,7 +70,7 @@ export struct ProfileTab {
       Mascot({ mood: 'happy', sz: 72 })
       Text('给自己起个名字').fontSize(F.heading).fontWeight(W.heavy).fontColor(C.ink)
       TextInput({ text: this.nameDraft, placeholder: '昵称' })
-        .maxLength(12)
+        .maxLength(LEARNER_NAME_MAX)
         .fontSize(F.subhead)
         .fontColor(C.ink)
         .textAlign(TextAlign.Center)
@@ -94,13 +98,20 @@ export struct ProfileTab {
 
   private unsubStore: () => void = () => {
   };
+  private unsubLearners: () => void = () => {
+  };
 
   aboutToDisappear(): void {
     this.unsubStore();
+    this.unsubLearners();
   }
 
   aboutToAppear(): void {
     this.unsubStore = this.store.onChange(() => {
+      this.rev++;
+    });
+    // 增删 / 改名其他孩子不会触发进度变化，孩子数与昵称要单独跟随档案注册表
+    this.unsubLearners = LearnerStore.shared.onChange(() => {
       this.rev++;
     });
   }
@@ -227,6 +238,45 @@ export struct ProfileTab {
       .onClick(() => {
         Haptics.tap();
         Router.shared.push(new AppRoute('cards'));
+      })
+    }
+
+    CardBox() {
+      Row({ space: 12 }) {
+        IconBadge('person', C.primary, 44, 20)
+        Column({ space: 2 }) {
+          Text('孩子档案').fontSize(F.body).fontWeight(W.bold).fontColor(C.ink)
+          Text(`${LearnerStore.shared.count} 个孩子 · 添加、切换、家长密码`).fontSize(F.micro).fontWeight(W.bold)
+            .fontColor(C.inkMuted)
+        }
+        .alignItems(HorizontalAlign.Start)
+        .layoutWeight(1)
+
+        DuoIcon({ name: 'chevronRight', sz: 18, color: C.inkSofter })
+      }
+      .width('100%')
+      .onClick(() => {
+        Haptics.tap();
+        Router.shared.push(new AppRoute('learners'));
+      })
+    }
+
+    CardBox() {
+      Row({ space: 12 }) {
+        IconBadge('list', C.secondary, 44, 20)
+        Column({ space: 2 }) {
+          Text('家长总览').fontSize(F.body).fontWeight(W.bold).fontColor(C.ink)
+          Text('每个孩子的今日学习、复习和每日目标').fontSize(F.micro).fontWeight(W.bold).fontColor(C.inkMuted)
+        }
+        .alignItems(HorizontalAlign.Start)
+        .layoutWeight(1)
+
+        DuoIcon({ name: 'chevronRight', sz: 18, color: C.inkSofter })
+      }
+      .width('100%')
+      .onClick(() => {
+        Haptics.tap();
+        Router.shared.push(new AppRoute('parent'));
       })
     }
 
@@ -368,8 +418,14 @@ export struct SettingsPage {
   dl: AssetDownloader = AssetDownloader.shared;
   @Local backupMsg: string = '';
   @Local confirmReset: boolean = false;
-  /** 已选好、待用户确认覆盖的存档。 */
-  @Local pendingImport: BackupEnvelope | null = null;
+  /** 已选好、待家长选择写入目标的存档（单人存档 1 份，全家备份多份）。 */
+  @Local pendingImport: BackupEnvelope[] = [];
+  @Local pendingFamily: boolean = false;
+  @Local pendingExportedAt: string = '';
+  /** 家长密码弹层（非空即显示）及通过后要执行的操作。 */
+  @Local gateReason: string = '';
+  @Local kidsRev: number = 0;
+  private gateAction: (() => void) | null = null;
   @Local reminderMsg: string = '';
   /** 提醒开关被权限拒绝回滚时自增，强制 Toggle 按真实状态重绘。 */
   @Local reminderRev: number = 0;
@@ -378,9 +434,12 @@ export struct SettingsPage {
 
   aboutToAppear(): void {
     this.unsubBack = Router.shared.interceptBack(() => {
-      if (this.confirmReset || this.pendingImport !== null) {
+      if (this.confirmReset || this.pendingImport.length > 0 || this.gateReason.length > 0) {
         this.confirmReset = false;
-        this.pendingImport = null;
+        this.pendingImport = [];
+        this.gateReason = '';
+        this.gateAction = null;
+        this.kidsRev++;
         return true;
       }
       return false;
@@ -389,6 +448,15 @@ export struct SettingsPage {
 
   aboutToDisappear(): void {
     this.unsubBack();
+  }
+
+  private guard(reason: string, action: () => void): void {
+    if (ParentLock.isUnlocked()) {
+      action();
+      return;
+    }
+    this.gateAction = action;
+    this.gateReason = reason;
   }
 
   private rescheduleReminders(): void {
@@ -468,28 +536,18 @@ export struct SettingsPage {
     }
   }
 
-  private exportBackup(): void {
-    const env = this.store.exportBackupEnvelope();
-    const json = JSON.stringify(env, null, 2);
-    const saveOpts = new picker.DocumentSaveOptions();
-    saveOpts.newFileNames = ['congcong-backup.json'];
+  private exportBackup(all: boolean): void {
+    const me = LearnerStore.shared.active;
+    const json = all ? JSON.stringify(Family.exportFamily(), null, 2) :
+      JSON.stringify(this.store.exportBackupEnvelope(), null, 2);
+    const name = all ? `congcong-family-backup-${Family.fileStamp()}.json` :
+      `congcong-backup-${Family.fileSafe(me.name)}-${Family.fileStamp()}.json`;
     try {
-      const docPicker = new picker.DocumentViewPicker(AppEnv.ctx());
-      docPicker.save(saveOpts).then((uris: Array<string>) => {
-        if (uris.length === 0) {
-          return;
+      Family.saveJson(json, name).then((ok: boolean) => {
+        if (ok) {
+          this.backupMsg = all ? '全家存档已导出' : `「${me.name}」的存档已导出`;
+          Haptics.success();
         }
-        const file = fs.openSync(uris[0],
-          fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC);
-        try {
-          fs.writeSync(file.fd, json);
-        } finally {
-          fs.closeSync(file);
-        }
-        this.backupMsg = '存档已导出';
-        Haptics.success();
-      }).catch((err: BusinessError) => {
-        this.backupMsg = `导出失败：${err.message ?? err.code}`;
       });
     } catch (e) {
       this.backupMsg = '导出失败：系统文件选择器不可用';
@@ -516,12 +574,14 @@ export struct SettingsPage {
         } finally {
           fs.closeSync(file);
         }
-        const v = validateBackup(raw);
-        if (v.envelope === null) {
+        const v = validateAnyBackup(raw);
+        if (v.entries.length === 0) {
           this.backupMsg = `存档无效：${v.error ?? '格式错误'}`;
           return;
         }
-        this.pendingImport = v.envelope;
+        this.pendingFamily = v.family;
+        this.pendingExportedAt = v.exportedAt;
+        this.pendingImport = v.entries;
       }).catch((err: BusinessError) => {
         this.backupMsg = `导入失败：${err.message ?? err.code}`;
       });
@@ -536,44 +596,20 @@ export struct SettingsPage {
       this.confirmReset = false;
     } }) {
       Mascot({ mood: 'sad', sz: 84 })
-      Text('确定要重置全部学习进度吗？').fontSize(F.heading).fontWeight(W.heavy).fontColor(C.ink)
+      Text(`确定要重置「${LearnerStore.shared.active.name}」的学习进度吗？`).fontSize(F.heading).fontWeight(W.heavy).fontColor(C.ink)
         .textAlign(TextAlign.Center)
       Text('经验、宝石、连胜、错题本都会清空，此操作无法撤销。建议先导出存档。').fontSize(F.caption)
         .fontColor(C.inkMuted).textAlign(TextAlign.Center)
       ChunkyButton({ label: '重置进度', variant: 'danger', onTap: () => {
         this.confirmReset = false;
-        this.store.resetProgress();
-        Haptics.wrong();
-        Router.shared.clear();
+        this.guard(`重置「${LearnerStore.shared.active.name}」的进度需要家长确认`, () => {
+          this.store.resetProgress();
+          Haptics.wrong();
+          Router.shared.clear();
+        });
       } })
       ChunkyButton({ label: '取消', variant: 'ghost', onTap: () => {
         this.confirmReset = false;
-      } })
-    }
-  }
-
-  @Builder
-  importDialog() {
-    ModalCard({ onBackdrop: () => {
-      this.pendingImport = null;
-    } }) {
-      DuoIcon({ name: 'download', sz: 40, color: C.secondary })
-      Text('导入将覆盖当前进度').fontSize(F.heading).fontWeight(W.heavy).fontColor(C.ink)
-      Text(`存档导出于 ${(this.pendingImport?.exportedAt ?? '').substring(0, 10)}` +
-        `（${this.pendingImport?.platform ?? '未知'}）。当前本机进度会被替换，建议先导出备份。`)
-        .fontSize(F.caption).fontColor(C.inkMuted).textAlign(TextAlign.Center)
-      ChunkyButton({ label: '覆盖并导入', variant: 'danger', onTap: () => {
-        const env = this.pendingImport;
-        this.pendingImport = null;
-        if (env !== null) {
-          this.store.importBackup(env);
-          this.backupMsg = '存档已导入';
-          Haptics.success();
-        }
-      } })
-      ChunkyButton({ label: '取消', variant: 'ghost', onTap: () => {
-        this.pendingImport = null;
-        this.backupMsg = '已取消导入';
       } })
     }
   }
@@ -586,8 +622,13 @@ export struct SettingsPage {
         Column({ space: 10 }) {
           Text('学习方式').fontSize(F.caption).fontWeight(W.bold).fontColor(C.inkMuted).width('100%')
             .margin({ top: 6 })
-          SettingRow({ title: '儿童模式（推荐）', subtitle: '答错不扣红心：先封存宝箱，收服心魔后返还；课内有神速题和踮脚题',
-            control: (): void => this.switchCtl(this.settings.kidsMode, (v: boolean) => this.settings.setKidsMode(v)) })
+          ForEach([this.kidsRev], (kr: number) => {
+            SettingRow({ title: '儿童模式（推荐）', subtitle: '答错不扣红心：先封存宝箱，收服心魔后返还；课内有神速题和踮脚题',
+              control: (): void => this.switchCtl(this.settings.kidsMode, (v: boolean) => {
+                this.guard('切换儿童模式需要家长确认', () => this.settings.setKidsMode(v));
+                this.kidsRev++;
+              }) })
+          }, (kr: number) => `kids-${kr}`)
 
           Text('声音与触感').fontSize(F.caption).fontWeight(W.bold).fontColor(C.inkMuted).width('100%')
             .margin({ top: 6 })
@@ -624,12 +665,18 @@ export struct SettingsPage {
             .margin({ top: 6 })
           CardBox() {
             Column({ space: 10 }) {
-              Text('导出/导入学习进度（与 iOS/Web 同一存档格式）').fontSize(F.caption).fontColor(C.inkMuted)
+              Text('导出/导入学习进度（与 iOS/Web 同一存档格式）。存档记着是哪个孩子的，导入时可选放进哪个档案。')
+                .fontSize(F.caption).fontColor(C.inkMuted)
               Row({ space: 10 }) {
                 SmallChunkyButton({ label: '导出存档', icon: 'share', bgColor: C.secondary,
-                  shadowColor: C.secondaryDark, onTap: () => this.exportBackup() }).layoutWeight(1)
+                  shadowColor: C.secondaryDark, onTap: () => this.exportBackup(false) }).layoutWeight(1)
                 SmallChunkyButton({ label: '导入存档', icon: 'download', bgColor: C.primary,
-                  shadowColor: C.primaryDark, onTap: () => this.importBackup() }).layoutWeight(1)
+                  shadowColor: C.primaryDark, onTap: () => this.guard('导入存档会覆盖孩子的进度，需要家长确认',
+                    () => this.importBackup()) }).layoutWeight(1)
+              }
+              if (LearnerStore.shared.count > 1) {
+                SmallChunkyButton({ label: '导出全家存档', icon: 'share', bgColor: C.secondary,
+                  shadowColor: C.secondaryDark, onTap: () => this.exportBackup(true) })
               }
               if (this.backupMsg.length > 0) {
                 Text(this.backupMsg).fontSize(F.micro).fontColor(C.inkMuted).maxLines(3)
@@ -662,7 +709,8 @@ export struct SettingsPage {
             .margin({ top: 6 })
           CardBox() {
             Column({ space: 10 }) {
-              Text('清空本机全部学习进度（不可恢复）').fontSize(F.caption).fontColor(C.inkMuted)
+              Text(`清空「${LearnerStore.shared.active.name}」的全部学习进度（不可恢复，其他孩子不受影响）`)
+                .fontSize(F.caption).fontColor(C.inkMuted)
               ChunkyButton({ label: '重置进度', variant: 'danger', onTap: () => {
                 Haptics.tap();
                 this.confirmReset = true;
@@ -685,8 +733,33 @@ export struct SettingsPage {
       if (this.confirmReset) {
         this.resetDialog()
       }
-      if (this.pendingImport !== null) {
-        this.importDialog()
+      if (this.pendingImport.length > 0) {
+        ImportPlanDialog({
+          entries: this.pendingImport, family: this.pendingFamily, exportedAt: this.pendingExportedAt,
+          onDone: (msg: string) => {
+            this.pendingImport = [];
+            this.backupMsg = msg;
+          }
+        })
+      }
+      if (this.gateReason.length > 0) {
+        ParentGate({
+          reason: this.gateReason,
+          onUnlocked: () => {
+            const action = this.gateAction;
+            this.gateAction = null;
+            this.gateReason = '';
+            if (action !== null) {
+              action();
+            }
+            this.kidsRev++;
+          },
+          onCancel: () => {
+            this.gateAction = null;
+            this.gateReason = '';
+            this.kidsRev++;
+          }
+        })
       }
     }
     .width('100%')

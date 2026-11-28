@@ -22,6 +22,8 @@ import { ProfileTab, AchievementsPage, SettingsPage } from '../features/Profile'
 import { RemedyPage } from '../features/Remedy';
 import { CardAlbumPage } from '../features/Cards';
 import { League } from '../domain/Seeded';
+import { LearnerStore } from '../stores/LearnerStore';
+import { LearnerPicker, LearnersPage, ParentOverviewPage } from '../features/Family';
 
 @Entry
 @ComponentV2
@@ -41,6 +43,9 @@ struct Index {
   @Local onboarded: boolean = false;
   /** 主题/明暗变化时自增，整棵界面按新配色重建（C.xxx 是构建期读取的普通值）。 */
   @Local themeRev: number = 0;
+  /** 「谁在学习？」选择层（冷启动多孩子自动弹 / 首页头像手动开）。 */
+  @Local picking: boolean = false;
+  private learnerId: string = '';
 
   private get tabBarHidden(): boolean {
     const n = this.pushedRoutes.length;
@@ -77,9 +82,22 @@ struct Index {
       this.onboarded = this.store.hasCompletedOnboarding;
       this.applyPalette();
     });
+    LearnerStore.shared.onChange(() => {
+      this.picking = LearnerStore.shared.pickerOpen;
+      // 换了孩子：回到学习 Tab，新孩子的登录奖励 / 联赛弹层重新可见
+      if (LearnerStore.shared.activeId !== this.learnerId) {
+        this.learnerId = LearnerStore.shared.activeId;
+        this.tab = 'learn';
+        this.rewardDismissed = false;
+        this.leagueDismissed = false;
+      }
+    });
     this.settings.load();
     SeedInstaller.installIfNeeded().catch(() => {
     }).finally(() => {
+      LearnerStore.shared.load();
+      this.learnerId = LearnerStore.shared.activeId;
+      this.picking = LearnerStore.shared.pickerOpen;
       this.store.load();
       this.onboarded = this.store.hasCompletedOnboarding;
       this.store.refreshForNow();
@@ -105,6 +123,16 @@ struct Index {
 
   /** 系统返回（侧滑/返回键）：弹层 → 页面拦截器 → 路由栈 → 回学习 Tab → 交给系统退出。 */
   onBackPress(): boolean {
+    if (this.picking) {
+      // 冷启动时返回 = 继续用当前孩子
+      if (LearnerStore.shared.pickerAuto) {
+        LearnerStore.shared.closePicker();
+        this.store.refreshForNow();
+      } else {
+        LearnerStore.shared.closePicker();
+      }
+      return true;
+    }
     if (this.pendingReward !== null && !this.rewardDismissed) {
       this.rewardDismissed = true;
       this.store.dismissDailyReward();
@@ -174,6 +202,10 @@ struct Index {
         RemedyPage({ route: route })
       } else if (route.name === 'cards') {
         CardAlbumPage()
+      } else if (route.name === 'learners') {
+        LearnersPage()
+      } else if (route.name === 'parent') {
+        ParentOverviewPage()
       }
     }
     .width('100%')
@@ -276,12 +308,15 @@ struct Index {
           .backgroundColor(C.bg)
         }, (rev: number) => `theme-${rev}`)
 
-        if (this.pendingReward !== null && !this.rewardDismissed) {
+        if (this.pendingReward !== null && !this.rewardDismissed && !this.picking) {
           this.dailyReward()
         }
-        if (this.pendingLeague && !this.leagueDismissed) {
+        if (this.pendingLeague && !this.leagueDismissed && !this.picking) {
           this.leagueSettle()
         }
+      }
+      if (this.ready && this.picking) {
+        LearnerPicker()
       }
     }
     .width('100%')
